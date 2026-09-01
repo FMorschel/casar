@@ -28,14 +28,15 @@ void main() {
   // with the provided parameters and components.
   runApp(
     Document(
+      base: const String.fromEnvironment('base_href', defaultValue: '/'),
       title: 'Nosso casamento',
       meta: {
         'viewport': 'width=device-width, initial-scale=1',
         'description': 'Site do casamento de $brideName e $groomName',
       },
       head: [
-        link(rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg'),
-        link(rel: 'alternate icon', href: '/favicon.ico'),
+        link(rel: 'icon', type: 'image/svg+xml', href: 'favicon.svg'),
+        link(rel: 'alternate icon', href: 'favicon.ico'),
       ],
       styles: themeStyles,
       body: App(),

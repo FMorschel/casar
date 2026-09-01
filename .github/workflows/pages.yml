@@ -24,7 +24,7 @@ jobs:
           sdk: stable
       - run: dart pub get
       - run: dart pub global activate jaspr_cli
-      - run: jaspr build --dart-define=base_href=/${{ github.event.repository.name }}/
+      - run: jaspr build --dart-define=base_href=/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

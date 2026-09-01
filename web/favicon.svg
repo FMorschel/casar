@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Duas alianças entrelaçadas">
+  <defs>
+    <linearGradient id="ouro" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7dfa0"/>
+      <stop offset="0.45" stop-color="#d9a94a"/>
+      <stop offset="1" stop-color="#a9761f"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#ouro)" stroke-width="5" stroke-linecap="round">
+    <!-- aliança da direita -->
+    <circle cx="40" cy="26" r="13"/>
+    <!-- aliança da esquerda -->
+    <circle cx="24" cy="38" r="13"/>
+    <!-- trecho da aliança da esquerda por cima, criando o entrelaçado -->
+    <path d="M27.02 25.36 A13 13 0 0 1 36.98 38.64"/>
+  </g>
+</svg>

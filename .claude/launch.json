@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "casar-dev",
+      "runtimeExecutable": "dart",
+      "runtimeArgs": ["pub", "global", "run", "jaspr_cli:jaspr", "serve"],
+      "port": 8080
+    }
+  ]
+}

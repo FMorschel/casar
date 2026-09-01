@@ -1,0 +1,21 @@
+name: casar
+description: A new Jaspr project
+version: 0.0.1
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  http: ^1.6.0
+  jaspr: ^0.23.0
+  qr: ^4.0.0
+  universal_web: ^1.1.1
+
+dev_dependencies:
+  build_runner: ^2.5.4
+  build_web_compilers: ^4.0.11
+  jaspr_builder: ^0.23.0
+  lints: ^5.0.0
+
+jaspr:
+  mode: static

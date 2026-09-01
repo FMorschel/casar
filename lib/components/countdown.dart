@@ -117,6 +117,17 @@ class CountdownState extends State<Countdown> {
         color: AppColors.border,
         fontWeight: .w700,
       ),
+      css.media(MediaQuery.all(maxWidth: 520.px), [
+        css('&').styles(flexWrap: .nowrap, gap: .all(6.px)),
+        css('.countdown-unit').styles(
+          flex: const Flex(grow: 1, shrink: 1, basis: Unit.zero),
+          minWidth: Unit.zero,
+          padding: .symmetric(vertical: 12.px, horizontal: 4.px),
+        ),
+        css('.countdown-value').styles(fontSize: 1.75.rem),
+        css('.countdown-label').styles(fontSize: 10.px, letterSpacing: .5.px),
+        css('.countdown-sep').styles(display: .none),
+      ]),
     ]),
   ];
 }

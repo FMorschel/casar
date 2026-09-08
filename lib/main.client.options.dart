@@ -9,6 +9,8 @@ import 'package:jaspr/client.dart';
 import 'package:casar/components/countdown.dart' deferred as _countdown;
 import 'package:casar/components/gift_list.dart' deferred as _gift_list;
 import 'package:casar/components/theme_toggle.dart' deferred as _theme_toggle;
+import 'package:casar/pages/photo_challenges_page.dart'
+    deferred as _photo_challenges_page;
 
 /// Default [ClientOptions] for use with your Jaspr project.
 ///
@@ -39,6 +41,10 @@ ClientOptions get defaultClientOptions => ClientOptions(
     'theme_toggle': ClientLoader(
       (p) => _theme_toggle.ThemeToggle(),
       loader: _theme_toggle.loadLibrary,
+    ),
+    'photo_challenges_page': ClientLoader(
+      (p) => _photo_challenges_page.PhotoChallengesFlow(),
+      loader: _photo_challenges_page.loadLibrary,
     ),
   },
 );

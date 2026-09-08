@@ -18,6 +18,8 @@ import 'package:casar/components/photo_capture.dart' as _photo_capture;
 import 'package:casar/components/photo_gallery.dart' as _photo_gallery;
 import 'package:casar/components/theme_toggle.dart' as _theme_toggle;
 import 'package:casar/components/toast.dart' as _toast;
+import 'package:casar/pages/photo_challenges_page.dart'
+    as _photo_challenges_page;
 
 /// Default [ServerOptions] for use with your Jaspr project.
 ///
@@ -43,6 +45,10 @@ ServerOptions get defaultServerOptions => ServerOptions(
     _theme_toggle.ThemeToggle: ClientTarget<_theme_toggle.ThemeToggle>(
       'theme_toggle',
     ),
+    _photo_challenges_page.PhotoChallengesFlow:
+        ClientTarget<_photo_challenges_page.PhotoChallengesFlow>(
+          'photo_challenges_page',
+        ),
   },
   styles: () => [
     ..._challenge_reveal.ChallengeRevealState.styles,
@@ -59,5 +65,7 @@ ServerOptions get defaultServerOptions => ServerOptions(
     ..._theme_toggle.ThemeToggleState.styles,
     ..._toast.Toast.styles,
     ..._toast.ToastStack.styles,
+    ..._photo_challenges_page.PhotoChallengesFlowState.styles,
+    ..._photo_challenges_page.PhotoChallengesPage.styles,
   ],
 );

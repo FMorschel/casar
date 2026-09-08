@@ -1,0 +1,248 @@
+/// Desafios de foto sorteados para os convidados e a galeria compartilhada
+/// com o que eles enviarem.
+library;
+
+import '../utils/text_formatting.dart';
+
+/// Um desafio de foto que pode ser sorteado para um convidado.
+class PhotoChallenge {
+  /// O texto do desafio, mostrado para o convidado.
+  final String text;
+
+  /// Desafios prioritários entram no sorteio com mais peso (implementação
+  /// do sorteio fica por conta de quem consumir esta lista).
+  final bool priority;
+
+  /// Frase escrita pelo próprio convidado, não sorteada do banco de frases.
+  ///
+  /// Só existe depois que ele completa os desafios sorteados — a partir daí
+  /// ele pode continuar mandando fotos com desafios que inventar.
+  final bool isCustom;
+
+  const PhotoChallenge({
+    required this.text,
+    required this.priority,
+    this.isCustom = false,
+  });
+
+  /// Um desafio escrito pelo próprio convidado.
+  PhotoChallenge.custom(String text)
+    : text = capitalizeAfterDots(text),
+      priority = false,
+      isCustom = true;
+
+  // Igualdade por texto: os desafios voltam da planilha/`localStorage` como
+  // instâncias novas a cada leitura, então comparar por identidade faria a
+  // mesma frase parecer dois desafios diferentes.
+  @override
+  bool operator ==(Object other) =>
+      other is PhotoChallenge && other.text == text;
+
+  @override
+  int get hashCode => text.hashCode;
+}
+
+/// Quantos desafios saem em cada sorteio.
+const challengesPerDraw = 3;
+
+/// Desafios que devem aparecer com mais frequência nos sorteios.
+const priorityPhotoChallenges = <PhotoChallenge>[
+  PhotoChallenge(text: 'Foto brindando com a sua mesa', priority: true),
+  PhotoChallenge(text: 'Foto com os noivos (sim, os dois)', priority: true),
+  PhotoChallenge(text: 'Foto de um casal (não os noivos)', priority: true),
+  PhotoChallenge(
+    text: 'Foto só dos padrinhos (pelo menos 2!)',
+    priority: true,
+  ),
+  PhotoChallenge(text: 'Foto dos pais dos noivos', priority: true),
+  PhotoChallenge(
+    text:
+        'Recrie uma foto antiga dos noivos (juntos - não precisa estar na foto)',
+    priority: true,
+  ),
+  PhotoChallenge(
+    text: 'Foto de um abraço dos noivos com os pais',
+    priority: true,
+  ),
+  PhotoChallenge(
+    text: 'Foto de alguém no meio de uma risada',
+    priority: true,
+  ),
+  PhotoChallenge(text: 'Foto de pessoas conversando', priority: true),
+  PhotoChallenge(text: 'Foto com o logo do restaurante', priority: true),
+  PhotoChallenge(
+    text: 'Foto de um abraço entre amigos (não vale família)',
+    priority: true,
+  ),
+  PhotoChallenge(text: 'Foto do noivo sem telas', priority: true),
+  PhotoChallenge(
+    text: 'Foto da noiva sem estar falando ou gesticulando',
+    priority: true,
+  ),
+  PhotoChallenge(text: 'Amigos no pergolado fazendo uma pose', priority: true),
+];
+
+/// Desafios que entram no sorteio com peso normal.
+const nonPriorityPhotoChallenges = <PhotoChallenge>[
+  PhotoChallenge(text: 'Selfie com alguém fora da sua mesa', priority: false),
+  PhotoChallenge(
+    text: 'Foto com o buquê (ou tentando pegar ele)',
+    priority: false,
+  ),
+  PhotoChallenge(text: 'Foto com a mesa de doces', priority: false),
+  PhotoChallenge(text: 'Foto com o seu prato', priority: false),
+  PhotoChallenge(text: 'Foto com os músicos', priority: false),
+  PhotoChallenge(text: 'Foto com um garçom', priority: false),
+  PhotoChallenge(text: 'Foto com alguém chorando', priority: false),
+  PhotoChallenge(text: 'Selfie em frente a decoração', priority: false),
+  PhotoChallenge(text: 'Foto com uma criança', priority: false),
+  PhotoChallenge(
+    text: 'Registro do bolo antes de ser cortado',
+    priority: false,
+  ),
+  PhotoChallenge(
+    text: 'Foto de mãos dadas com quem está do seu lado',
+    priority: false,
+  ),
+  PhotoChallenge(text: 'Foto com a chopeira ou bar', priority: false),
+  PhotoChallenge(text: 'Foto no pergolado', priority: false),
+  PhotoChallenge(text: 'Foto no laguinho', priority: false),
+  PhotoChallenge(text: 'Foto no playground', priority: false),
+  PhotoChallenge(text: 'Foto no mato', priority: false),
+  PhotoChallenge(text: 'Foto sentado na grama', priority: false),
+  PhotoChallenge(
+    text: 'Foto do casal que está a mais tempo junto',
+    priority: false,
+  ),
+  PhotoChallenge(
+    text: 'Foto tentando roubar um doce escondido',
+    priority: false,
+  ),
+  PhotoChallenge(text: 'Foto da roupa de alguém', priority: false),
+  PhotoChallenge(text: 'Foto do local da festa', priority: false),
+  PhotoChallenge(text: 'Foto de duas gerações juntas', priority: false),
+  PhotoChallenge(text: 'Foto de alguém dançando', priority: false),
+  PhotoChallenge(text: 'Foto de alguém se arrumando', priority: false),
+  PhotoChallenge(text: 'Uma foto no banheiro', priority: false),
+  PhotoChallenge(
+    text: 'Foto com a pessoas mais jovem da festa',
+    priority: false,
+  ),
+  PhotoChallenge(
+    text: 'Foto com a pessoa mais velha da festa',
+    priority: false,
+  ),
+  PhotoChallenge(text: 'Foto fazendo pose de fisiculturista', priority: false),
+  PhotoChallenge(text: 'Foto fingindo pescar no lago', priority: false),
+  PhotoChallenge(text: 'Foto na entrada do restaurante', priority: false),
+  PhotoChallenge(text: 'Foto de alguém descalço', priority: false),
+  PhotoChallenge(
+    text: 'Foto de dois familiares que se parecem muito',
+    priority: false,
+  ),
+  PhotoChallenge(text: 'Foto de um drink', priority: false),
+  PhotoChallenge(
+    text:
+        'Uma foto tentando dar a maior mordida possível em um hambúrguer sem perder a compostura',
+    priority: false,
+  ),
+  PhotoChallenge(
+    text: 'Tire uma foto "escondido" em algum lugar',
+    priority: false,
+  ),
+];
+
+/// Todos os desafios disponíveis, prioritários primeiro.
+const allPhotoChallenges = [
+  ...priorityPhotoChallenges,
+  ...nonPriorityPhotoChallenges,
+];
+
+/// Procura um desafio pelo seu [text].
+///
+/// O sorteio salvo (planilha/`localStorage`) só guarda o texto do desafio,
+/// não a flag [PhotoChallenge.priority] — esta função é o caminho de volta
+/// de texto para o desafio completo.
+PhotoChallenge? findPhotoChallengeByText(String text) {
+  for (final challenge in allPhotoChallenges) {
+    if (challenge.text == text) return challenge;
+  }
+  return null;
+}
+
+/// Devolve o desafio de [text], tratando o que não está no banco de frases
+/// como um desafio escrito pelo próprio convidado.
+///
+/// Depois dos sorteados, o convidado pode mandar fotos com frases que ele
+/// mesmo escreveu — elas voltam da planilha misturadas com as sorteadas e só
+/// dá para diferenciá-las assim, por não estarem no banco.
+PhotoChallenge resolvePhotoChallenge(String text) =>
+    findPhotoChallengeByText(text) ?? PhotoChallenge.custom(text);
+
+/// Um desafio atribuído a um convidado, junto com o progresso local da
+/// captura (FR-13).
+class AssignedChallenge {
+  /// O desafio sorteado.
+  final PhotoChallenge challenge;
+
+  /// A foto confirmada pelo convidado, como `data:image/...;base64,...`.
+  ///
+  /// `null` enquanto o convidado ainda não tirou/confirmou a foto.
+  final String? confirmedPhotoDataUrl;
+
+  const AssignedChallenge({
+    required this.challenge,
+    this.confirmedPhotoDataUrl,
+  });
+
+  /// Se a foto deste desafio já foi confirmada pelo convidado.
+  bool get isConfirmed => confirmedPhotoDataUrl != null;
+
+  /// Devolve uma cópia com [confirmedPhotoDataUrl] substituído.
+  AssignedChallenge copyWith({String? confirmedPhotoDataUrl}) {
+    return AssignedChallenge(
+      challenge: challenge,
+      confirmedPhotoDataUrl:
+          confirmedPhotoDataUrl ?? this.confirmedPhotoDataUrl,
+    );
+  }
+}
+
+/// Uma foto da galeria compartilhada entre os convidados (FR-16, FR-17).
+class GalleryPhoto {
+  /// O texto do desafio que gerou esta foto.
+  final String challengeText;
+
+  /// Nome do convidado que enviou a foto.
+  final String authorName;
+
+  /// URL da foto já salva (não é mais o `data:` local).
+  final String photoUrl;
+
+  /// Quando a foto foi tirada.
+  final DateTime takenAt;
+
+  const GalleryPhoto({
+    required this.challengeText,
+    required this.authorName,
+    required this.photoUrl,
+    required this.takenAt,
+  });
+}
+
+/// Resultado de um sorteio (FR-8), incluindo fotos já confirmadas antes para
+/// algum desses desafios — permite marcar um desafio como feito assim que os
+/// desafios chegam do servidor, sem depender do `localStorage` deste
+/// aparelho (ex.: convidado abrindo em outro aparelho).
+class DrawnChallenges {
+  /// Os desafios sorteados (ou recuperados) para o convidado.
+  final List<PhotoChallenge> challenges;
+
+  /// Texto do desafio -> URL da foto já confirmada para ele, se houver.
+  final Map<String, String> confirmedPhotos;
+
+  const DrawnChallenges({
+    required this.challenges,
+    required this.confirmedPhotos,
+  });
+}

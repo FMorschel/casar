@@ -5,6 +5,7 @@
 // Generated with jaspr_builder
 
 import 'package:jaspr/server.dart';
+import 'package:casar/components/challenge_reveal.dart' as _challenge_reveal;
 import 'package:casar/components/countdown.dart' as _countdown;
 import 'package:casar/components/couple_section.dart' as _couple_section;
 import 'package:casar/components/footer.dart' as _footer;
@@ -40,6 +41,7 @@ ServerOptions get defaultServerOptions => ServerOptions(
     ),
   },
   styles: () => [
+    ..._challenge_reveal.ChallengeRevealState.styles,
     ..._countdown.CountdownState.styles,
     ..._couple_section.CoupleSection.styles,
     ..._footer.Footer.styles,

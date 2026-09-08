@@ -10,7 +10,9 @@ import 'package:casar/components/countdown.dart' as _countdown;
 import 'package:casar/components/couple_section.dart' as _couple_section;
 import 'package:casar/components/footer.dart' as _footer;
 import 'package:casar/components/gift_list.dart' as _gift_list;
+import 'package:casar/components/guest_name_gate.dart' as _guest_name_gate;
 import 'package:casar/components/hero.dart' as _hero;
+import 'package:casar/components/loading_indicator.dart' as _loading_indicator;
 import 'package:casar/components/navbar.dart' as _navbar;
 import 'package:casar/components/photo_capture.dart' as _photo_capture;
 import 'package:casar/components/photo_gallery.dart' as _photo_gallery;
@@ -48,7 +50,9 @@ ServerOptions get defaultServerOptions => ServerOptions(
     ..._couple_section.CoupleSection.styles,
     ..._footer.Footer.styles,
     ..._gift_list.GiftListState.styles,
+    ..._guest_name_gate.GuestNameGateState.styles,
     ..._hero.Hero.styles,
+    ..._loading_indicator.LoadingIndicator.styles,
     ..._navbar.Navbar.styles,
     ..._photo_capture.PhotoCaptureState.styles,
     ..._photo_gallery.PhotoGalleryState.styles,

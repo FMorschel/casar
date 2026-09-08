@@ -1,8 +1,9 @@
 /**
- * Backend "serverless" da lista de presentes do casar.
+ * Backend "serverless" do site do casar.
  *
- * Guarda as ideias sugeridas pelos convidados numa planilha do Google e as
- * devolve para o site estático (GitHub Pages), que não tem servidor próprio.
+ * Guarda as ideias de presente e os desafios de foto dos convidados numa
+ * planilha do Google, devolvendo tudo para o site estático (GitHub Pages),
+ * que não tem servidor próprio.
  *
  * Como publicar: veja tools/apps_script/README.md
  */
@@ -22,8 +23,102 @@ var MAX_AUTHOR = 60;
 /** Teto de ideias guardadas: passou disso, a mais antiga sai. */
 var MAX_ROWS = 500;
 
+/**
+ * Aba dos desafios de foto: uma linha por desafio sorteado (3 por
+ * convidado), não uma linha por convidado. `foto_url`/`tirada_em` ficam
+ * vazios até o convidado confirmar a foto daquele desafio — é a mesma linha
+ * que vira uma entrada da galeria quando preenchida (FR-16).
+ */
+var PHOTO_SHEET_NAME = 'desafios_fotos';
+var PHOTO_HEADERS = ['sorteio_timestamp', 'nome', 'desafio', 'foto_url', 'tirada_em'];
+
+/** Id da pasta do Drive onde as fotos dos desafios são salvas. */
+var PHOTOS_FOLDER_ID = '1DKM-GqX_0QNhYQELCjREr_ROKL977u-d';
+
+var MAX_GUEST_NAME = 120;
+var MAX_CHALLENGE = 200;
+var MAX_MIME = 40;
+
+/** Quantos desafios saem em cada sorteio. */
+var CHALLENGES_PER_DRAW = 3;
+
+/**
+ * Quantas vezes uma frase prioritária entra no sorteio em relação a uma não
+ * prioritária — veja `pickChallenges_`.
+ */
+var PRIORITY_WEIGHT = 3;
+
+/**
+ * Desafios prioritários: pelo menos um por sorteio (enquanto sobrar algum
+ * que o convidado ainda não pegou) e peso maior nas vagas restantes —
+ * veja `pickChallenges_`.
+ */
+var PRIORITY_CHALLENGES = [
+  'Foto brindando com a sua mesa',
+  'Foto com os noivos (sim, os dois)',
+  'Foto de um casal (não os noivos)',
+  'Foto só dos padrinhos (pelo menos 2!)',
+  'Foto dos pais dos noivos',
+  'Recrie uma foto antiga dos noivos (juntos - não precisa estar na foto)',
+  'Foto de um abraço dos noivos com os pais',
+  'Foto de alguém no meio de uma risada',
+  'Foto de pessoas conversando',
+  'Foto com o logo do restaurante',
+  'Foto de um abraço entre amigos (não vale família)',
+  'Foto do noivo sem telas',
+  'Foto da noiva sem estar falando ou gesticulando',
+  'Amigos no pergolado fazendo uma pose',
+];
+
+/**
+ * Desafios não prioritários: mesmo peso entre si, sorteados com menos
+ * frequência que os prioritários e sem obrigação de aparecer num sorteio —
+ * veja `pickChallenges_`.
+ */
+var NON_PRIORITY_CHALLENGES = [
+  'Selfie com alguém fora da sua mesa',
+  'Foto com o buquê (ou tentando pegar ele)',
+  'Foto com a mesa de doces',
+  'Foto com o seu prato',
+  'Foto com os músicos',
+  'Foto com um garçom',
+  'Foto com alguém chorando',
+  'Selfie em frente a decoração',
+  'Foto com uma criança',
+  'Registro do bolo antes de ser cortado',
+  'Foto de mãos dadas com quem está do seu lado',
+  'Foto com a chopeira ou bar',
+  'Foto no pergolado',
+  'Foto no laguinho',
+  'Foto no playground',
+  'Foto no mato',
+  'Foto sentado na grama',
+  'Foto do casal que está a mais tempo junto',
+  'Foto tentando roubar um doce escondido',
+  'Foto da roupa de alguém',
+  'Foto do local da festa',
+  'Foto de duas gerações juntas',
+  'Foto de alguém dançando',
+  'Foto de alguém se arrumando',
+  'Uma foto no banheiro',
+  'Foto com a pessoas mais jovem da festa',
+  'Foto com a pessoa mais velha da festa',
+  'Foto fazendo pose de fisiculturista',
+  'Foto fingindo pescar no lago',
+  'Foto na entrada do restaurante',
+  'Foto de alguém descalço',
+  'Foto de dois familiares que se parecem muito',
+  'Foto de um drink',
+  'Uma foto tentando dar a maior mordida possível em um hambúrguer sem perder a compostura',
+  'Tire uma foto "escondido" em algum lugar',
+];
+
+function ss_() {
+  return SpreadsheetApp.openById(SHEET_ID);
+}
+
 function sheet_() {
-  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var ss = ss_();
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
@@ -31,7 +126,35 @@ function sheet_() {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(HEADERS);
   }
+  applyDateTimeFormat_(sheet, [1]); // timestamp
   return sheet;
+}
+
+function photoSheet_() {
+  var ss = ss_();
+  var sheet = ss.getSheetByName(PHOTO_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(PHOTO_SHEET_NAME);
+  }
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(PHOTO_HEADERS);
+  }
+  applyDateTimeFormat_(sheet, [1, 5]); // sorteio_timestamp, tirada_em
+  return sheet;
+}
+
+/**
+ * Sheets guarda o instante completo (data+hora) internamente sempre que a
+ * célula recebe um objeto `Date`, mas exibe só a data se a coluna estiver
+ * com formato "Date" em vez de "Date time" — o que aconteceu por padrão
+ * nestas planilhas. Reaplicar o formato completo a cada acesso corrige isso
+ * sem depender de alguém editar a formatação manualmente na planilha.
+ */
+function applyDateTimeFormat_(sheet, columns) {
+  var rows = Math.max(sheet.getMaxRows() - 1, 1);
+  for (var i = 0; i < columns.length; i++) {
+    sheet.getRange(2, columns[i], rows, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  }
 }
 
 function json_(payload) {
@@ -48,8 +171,43 @@ function clean_(value, max) {
     .slice(0, max);
 }
 
-/** GET: devolve todas as ideias que os convidados já mandaram. */
-function doGet() {
+/** Chave de idempotência do convidado: nome normalizado (minúsculo, sem espaços nas pontas). */
+function normalizeName_(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+/**
+ * Nome do convidado com a primeira letra de cada palavra maiúscula e o
+ * resto minúsculo (ex.: "MARIA da silva" -> "Maria Da Silva"), com espaços
+ * internos repetidos colapsados. Devolve string vazia se não sobrar nada
+ * depois do trim.
+ */
+function titleCaseName_(name) {
+  return String(name || '')
+    .split(/\s+/)
+    .filter(function (word) {
+      return word.length > 0;
+    })
+    .map(function (word) {
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+/** Quantidade de letras (ignora espaços, números e pontuação) em [text]. */
+function countLetters_(text) {
+  var matches = String(text || '').match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g);
+  return matches ? matches.length : 0;
+}
+
+/** GET: devolve todas as ideias, ou a galeria de fotos com `?action=gallery`. */
+function doGet(e) {
+  var action = e && e.parameter && e.parameter.action;
+  if (action === 'gallery') return doGetGallery_();
+  return doGetIdeas_();
+}
+
+function doGetIdeas_() {
   var sheet = sheet_();
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return json_({ ideas: [] });
@@ -72,7 +230,69 @@ function doGet() {
 }
 
 /**
- * POST: grava uma ideia nova.
+ * Monta o link de exibição de uma foto do Drive.
+ *
+ * `lh3.googleusercontent.com/d/<id>=w<N>` é o único endpoint terminal dos três
+ * que o Drive oferece. Os outros dois são redirects `no-store`:
+ * `uc?export=view` cai no endpoint de download, que tem cota por arquivo e
+ * responde 403 quando ela estoura; `thumbnail?id=` cai aqui mesmo, gastando um
+ * salto que o cache nunca pode poupar.
+ *
+ * `w600` porque os cards da galeria têm ~200–250px de largura. O sufixo `=w<N>`
+ * também é o que `photo_gallery.dart` reescreve para `=w80` enquanto o álbum
+ * está borrado — num link sem esse sufixo aquela troca vira no-op silencioso e
+ * o card borrado baixa a foto inteira.
+ *
+ * O que foi medido, e por quê, está em galeria-fotos-carregamento.md, na raiz
+ * do repositório.
+ */
+function photoDisplayUrl_(fileId) {
+  return 'https://lh3.googleusercontent.com/d/' + fileId + '=w600';
+}
+
+/**
+ * Reescreve qualquer link de foto já salvo na planilha (o formato antigo
+ * `uc?export=view&id=...`, o `?action=photo&id=...` de uma tentativa anterior,
+ * um `file/d/<id>/view` colado à mão, ou um link do CDN com outro `=w<N>`)
+ * para o formato de exibição atual, para a galeria se autocorrigir sem
+ * migração manual na planilha.
+ *
+ * Sem id reconhecível, devolve o link como está — melhor mostrar algo que o
+ * dono da planilha colou na mão do que montar um link inventado.
+ */
+function normalizePhotoUrl_(url) {
+  var text = String(url);
+  var match = text.match(/[?&]id=([A-Za-z0-9_-]+)/) ||
+    text.match(/\/d\/([A-Za-z0-9_-]+)/);
+  return match ? photoDisplayUrl_(match[1]) : text;
+}
+
+function doGetGallery_() {
+  var sheet = photoSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return json_({ photos: [] });
+
+  var rows = sheet.getRange(2, 1, lastRow - 1, PHOTO_HEADERS.length).getValues();
+  var photos = rows
+    .filter(function (row) {
+      // foto_url vazio = desafio já sorteado, mas foto ainda não confirmada.
+      return String(row[3]).trim() !== '';
+    })
+    .map(function (row) {
+      return {
+        timestamp: new Date(row[4]).toISOString(), // tirada_em
+        author: String(row[1]),
+        challenge: String(row[2]),
+        url: normalizePhotoUrl_(row[3]),
+      };
+    });
+
+  return json_({ photos: photos });
+}
+
+/**
+ * POST: dispatcher por `action`. Sem `action` (uso atual do gift-ideas),
+ * grava uma ideia nova — comportamento inalterado.
  *
  * O corpo chega como texto puro (JSON) de propósito: `application/json`
  * dispararia um preflight CORS que o Apps Script não responde.
@@ -85,6 +305,38 @@ function doPost(e) {
     return json_({ ok: false, error: 'invalid_json' });
   }
 
+  if (body.action === 'draw') return doPostDraw_(body);
+  if (body.action === 'drawMore') return doPostDrawMore_(body);
+  if (body.action === 'check') return doPostCheck_(body);
+  if (body.action === 'upload') return doPostUpload_(body);
+  return doPostIdea_(body);
+}
+
+/**
+ * POST action=check: só consulta se [name] já tem desafios sorteados, sem
+ * sortear nem gravar nada — usado para perguntar "é você?" antes de assumir
+ * a identidade de um nome já usado por outro convidado.
+ */
+function doPostCheck_(body) {
+  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
+  if (!name) return json_({ ok: false, error: 'missing_name' });
+  var key = normalizeName_(name);
+
+  var sheet = photoSheet_();
+  var lastRow = sheet.getLastRow();
+  var rows = lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, PHOTO_HEADERS.length).getValues()
+    : [];
+
+  var existing = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (normalizeName_(rows[i][1]) === key) existing.push(String(rows[i][2]));
+  }
+
+  return json_({ ok: true, challenges: existing });
+}
+
+function doPostIdea_(body) {
   var name = clean_(body.name, MAX_NAME);
   if (!name) return json_({ ok: false, error: 'missing_name' });
 
@@ -110,4 +362,313 @@ function doPost(e) {
   }
 
   return json_({ ok: true, idea: idea });
+}
+
+/** Todas as linhas da aba de desafios (sem o cabeçalho). */
+function photoRows_(sheet) {
+  var lastRow = sheet.getLastRow();
+  return lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, PHOTO_HEADERS.length).getValues()
+    : [];
+}
+
+/**
+ * O que o convidado `key` já tem: todos os desafios dele (de todos os
+ * sorteios mais os que ele escreveu, na ordem da planilha), as fotos já
+ * confirmadas e quantos desafios ainda estão sem foto.
+ */
+function guestState_(rows, key) {
+  var challenges = [];
+  var photos = {};
+  var pending = 0;
+  for (var i = 0; i < rows.length; i++) {
+    if (normalizeName_(rows[i][1]) !== key) continue;
+    var challenge = String(rows[i][2]);
+    challenges.push(challenge);
+    var url = String(rows[i][3]).trim();
+    if (url !== '') {
+      photos[challenge] = url;
+    } else {
+      pending++;
+    }
+  }
+  return { challenges: challenges, photos: photos, pending: pending };
+}
+
+/**
+ * Frases que algum convidado já pegou — fonte única de verdade para dar
+ * preferência às que ainda não saíram para ninguém. Mesmo com dois
+ * convidados sorteando ao mesmo tempo, o lock do script serializa esta
+ * leitura+escrita.
+ */
+function usedTexts_(rows) {
+  var used = {};
+  for (var i = 0; i < rows.length; i++) {
+    used[String(rows[i][2])] = true;
+  }
+  return used;
+}
+
+/**
+ * Grava um desafio por linha; foto_url/tirada_em ficam vazios até a
+ * confirmação da foto (doPostUpload_ preenche na mesma linha).
+ */
+function appendChallenges_(sheet, name, challenges) {
+  var sorteioTimestamp = new Date();
+  for (var i = 0; i < challenges.length; i++) {
+    sheet.appendRow([sorteioTimestamp, name, challenges[i], '', '']);
+  }
+}
+
+/** POST action=draw: sorteia (ou recupera) os desafios de um convidado. */
+function doPostDraw_(body) {
+  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
+  if (!name) return json_({ ok: false, error: 'missing_name' });
+  if (countLetters_(name) < 3) return json_({ ok: false, error: 'name_too_short' });
+  var key = normalizeName_(name);
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var sheet = photoSheet_();
+    var rows = photoRows_(sheet);
+
+    // Sorteio idempotente por convidado (FR-8): já sorteado, devolve tudo
+    // que ele tem de novo — todos os sorteios, não só o último, mais os
+    // desafios que ele mesmo escreveu. `photos` traz a foto_url de quem já
+    // confirmou algum deles antes, para o site marcar como feito sem
+    // depender só do localStorage (ex.: convidado em outro aparelho).
+    var state = guestState_(rows, key);
+    if (state.challenges.length > 0) {
+      return json_({ ok: true, challenges: state.challenges, photos: state.photos });
+    }
+
+    var challenges = pickChallenges_({}, usedTexts_(rows), CHALLENGES_PER_DRAW);
+    appendChallenges_(sheet, name, challenges);
+
+    return json_({ ok: true, challenges: challenges, photos: {} });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * POST action=drawMore: sorteia mais um trio para quem já mandou as fotos de
+ * todos os desafios que tinha.
+ *
+ * Devolve a lista completa do convidado (a de antes mais o sorteio novo) —
+ * quando o banco de frases acaba, devolve só a de antes, e o site entende
+ * pela ausência de novidades que só sobraram os desafios escritos à mão.
+ */
+function doPostDrawMore_(body) {
+  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
+  if (!name) return json_({ ok: false, error: 'missing_name' });
+  var key = normalizeName_(name);
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var sheet = photoSheet_();
+    var rows = photoRows_(sheet);
+    var state = guestState_(rows, key);
+
+    if (state.challenges.length === 0) return json_({ ok: false, error: 'not_started' });
+    if (state.pending > 0) return json_({ ok: false, error: 'pending_photos' });
+
+    var pickedByGuest = {};
+    for (var i = 0; i < state.challenges.length; i++) {
+      pickedByGuest[state.challenges[i]] = true;
+    }
+
+    var challenges = pickChallenges_(pickedByGuest, usedTexts_(rows), CHALLENGES_PER_DRAW);
+    if (challenges.length > 0) appendChallenges_(sheet, name, challenges);
+
+    return json_({
+      ok: true,
+      challenges: state.challenges.concat(challenges),
+      photos: state.photos,
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** O banco de frases inteiro, com a marca de prioritária. */
+function allChallenges_() {
+  var all = [];
+  for (var i = 0; i < PRIORITY_CHALLENGES.length; i++) {
+    all.push({ text: PRIORITY_CHALLENGES[i], priority: true });
+  }
+  for (var j = 0; j < NON_PRIORITY_CHALLENGES.length; j++) {
+    all.push({ text: NON_PRIORITY_CHALLENGES[j], priority: false });
+  }
+  return all;
+}
+
+/**
+ * Sorteia até `count` frases para um convidado. Espelha
+ * `drawPhotoChallenges` de lib/utils/challenge_draw.dart, que roda no site
+ * quando este endpoint não está configurado — as duas precisam andar juntas.
+ *
+ * As regras, em ordem:
+ *
+ * 1. nenhuma frase se repete para o mesmo convidado (`pickedByGuest`);
+ * 2. todo sorteio traz pelo menos uma frase prioritária, enquanto sobrar
+ *    alguma prioritária que este convidado ainda não pegou;
+ * 3. as vagas restantes saem de qualquer frase, com peso maior para as
+ *    prioritárias — não é obrigatório sair uma não prioritária;
+ * 4. em qualquer vaga, frases que nenhum convidado pegou ainda
+ *    (`pickedByAnyone`) têm preferência absoluta sobre as que já saíram para
+ *    alguém — o banco de frases é percorrido inteiro antes de repetir;
+ * 5. se não sobrar frase suficiente, devolve menos que `count` (inclusive
+ *    lista vazia) em vez de repetir.
+ */
+function pickChallenges_(pickedByGuest, pickedByAnyone, count) {
+  var available = allChallenges_().filter(function (challenge) {
+    return !pickedByGuest[challenge.text];
+  });
+
+  var picked = [];
+  var pickedTexts = {};
+
+  function take(candidates) {
+    var choice = pickOne_(candidates, pickedByAnyone);
+    picked.push(choice.text);
+    pickedTexts[choice.text] = true;
+  }
+
+  if (count > 0) {
+    var priority = available.filter(function (challenge) {
+      return challenge.priority;
+    });
+    if (priority.length > 0) take(priority);
+  }
+
+  while (picked.length < count) {
+    var candidates = available.filter(function (challenge) {
+      return !pickedTexts[challenge.text];
+    });
+    if (candidates.length === 0) break;
+    take(candidates);
+  }
+
+  return picked;
+}
+
+/**
+ * Escolhe uma frase de `candidates`, preferindo as que ninguém pegou ainda
+ * e, dentro disso, dando mais peso às prioritárias.
+ */
+function pickOne_(candidates, pickedByAnyone) {
+  var fresh = candidates.filter(function (challenge) {
+    return !pickedByAnyone[challenge.text];
+  });
+  var pool = fresh.length > 0 ? fresh : candidates;
+
+  var weighted = [];
+  for (var i = 0; i < pool.length; i++) {
+    var weight = pool[i].priority ? PRIORITY_WEIGHT : 1;
+    for (var w = 0; w < weight; w++) weighted.push(pool[i]);
+  }
+  return weighted[Math.floor(Math.random() * weighted.length)];
+}
+
+/**
+ * Regras da frase que o convidado escreve depois de completar os desafios
+ * sorteados — espelha `validateCustomChallenge` de
+ * lib/utils/custom_challenge.dart, que é quem avisa o convidado na tela;
+ * aqui é só a checagem de quem grava, já que a planilha é pública para
+ * escrita.
+ */
+function isValidCustomChallenge_(text) {
+  var first = text.charAt(0);
+  if (countLetters_(first) === 0 || first !== first.toUpperCase()) return false;
+
+  var words = text.split(/\s+/);
+  if (words.length < 3) return false;
+  for (var i = 0; i < words.length; i++) {
+    if (countLetters_(words[i]) < 2) return false;
+  }
+
+  // Comparação em maiúsculas: o que muda só na caixa é o mesmo desafio.
+  var upper = text.toUpperCase();
+  var all = allChallenges_();
+  for (var j = 0; j < all.length; j++) {
+    if (all[j].text.toUpperCase() === upper) return false;
+  }
+
+  return true;
+}
+
+/** POST action=upload: salva a foto de um desafio confirmado. */
+function doPostUpload_(body) {
+  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
+  if (!name) return json_({ ok: false, error: 'missing_name' });
+  if (countLetters_(name) < 3) return json_({ ok: false, error: 'name_too_short' });
+
+  var challenge = clean_(body.challenge, MAX_CHALLENGE);
+  if (!challenge) return json_({ ok: false, error: 'missing_challenge' });
+
+  var photoBase64 = body.photo;
+  if (!photoBase64) return json_({ ok: false, error: 'missing_photo' });
+
+  var mimeType = clean_(body.mimeType, MAX_MIME) || 'image/jpeg';
+  var timestamp = body.timestamp ? new Date(body.timestamp) : new Date();
+
+  // Sobe pro Drive antes do lock, para segurar o lock pelo menor tempo
+  // possível — o upload em si não precisa de coordenação entre convidados.
+  var url;
+  try {
+    var bytes = Utilities.base64Decode(photoBase64);
+    var blob = Utilities.newBlob(bytes, mimeType, name + '-' + challenge + '.jpg');
+    var folder = DriveApp.getFolderById(PHOTOS_FOLDER_ID);
+    var file = folder.createFile(blob);
+    // A permissão por link é o que deixa o CDN servir a foto para quem abrir
+    // o site sem estar logado numa conta com acesso à pasta.
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    url = photoDisplayUrl_(file.getId());
+  } catch (err) {
+    return json_({ ok: false, error: 'upload_failed', detail: String((err && err.message) || err) });
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var sheet = photoSheet_();
+    var lastRow = sheet.getLastRow();
+    var rows = lastRow >= 2
+      ? sheet.getRange(2, 1, lastRow - 1, PHOTO_HEADERS.length).getValues()
+      : [];
+
+    // Acha a linha do desafio sorteado de `name` (doPostDraw_ já criou uma
+    // linha vazia de foto_url/tirada_em pra cada desafio) e preenche nela —
+    // não cria uma linha nova.
+    var key = normalizeName_(name);
+    var rowIndex = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (normalizeName_(rows[i][1]) === key && String(rows[i][2]) === challenge) {
+        rowIndex = i;
+        break;
+      }
+    }
+
+    if (rowIndex === -1) {
+      // Desafio escrito pelo próprio convidado: não existe linha sorteada
+      // esperando por ele, a linha nasce aqui já com a foto.
+      if (body.custom !== true) return json_({ ok: false, error: 'challenge_not_assigned' });
+      if (!isValidCustomChallenge_(challenge)) {
+        return json_({ ok: false, error: 'invalid_challenge' });
+      }
+      sheet.appendRow([timestamp, name, challenge, url, timestamp]);
+    } else if (String(rows[rowIndex][3]).trim() !== '') {
+      return json_({ ok: false, error: 'duplicate' });
+    } else {
+      // +2: a leitura acima começa na linha 2 (linha 1 é o cabeçalho).
+      sheet.getRange(rowIndex + 2, 4, 1, 2).setValues([[url, timestamp]]);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+
+  return json_({ ok: true, url: url });
 }

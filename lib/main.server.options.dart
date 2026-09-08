@@ -13,6 +13,7 @@ import 'package:casar/components/gift_list.dart' as _gift_list;
 import 'package:casar/components/hero.dart' as _hero;
 import 'package:casar/components/navbar.dart' as _navbar;
 import 'package:casar/components/photo_capture.dart' as _photo_capture;
+import 'package:casar/components/photo_gallery.dart' as _photo_gallery;
 import 'package:casar/components/theme_toggle.dart' as _theme_toggle;
 import 'package:casar/components/toast.dart' as _toast;
 
@@ -50,6 +51,7 @@ ServerOptions get defaultServerOptions => ServerOptions(
     ..._hero.Hero.styles,
     ..._navbar.Navbar.styles,
     ..._photo_capture.PhotoCaptureState.styles,
+    ..._photo_gallery.PhotoGalleryState.styles,
     ..._theme_toggle.ThemeToggleState.styles,
     ..._toast.Toast.styles,
     ..._toast.ToastStack.styles,

@@ -8,6 +8,13 @@ const coupleHashtag = '#JuFe';
 /// Wedding date/time used by the countdown and the hero section.
 final weddingDate = DateTime(2026, 9, 18, 19, 0);
 
+/// 7h da manhã do dia após [weddingDate]; a galeria de fotos dos desafios
+/// fica borrada até essa data (FR-18).
+DateTime get photoRevealDate {
+  final d = weddingDate.add(const Duration(days: 1));
+  return DateTime(d.year, d.month, d.day, 7);
+}
+
 const venueName = 'Meridiano 55';
 
 /// Dados do Pix usados pelo QR Code da lista de presentes.

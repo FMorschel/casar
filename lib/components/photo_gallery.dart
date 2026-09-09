@@ -324,11 +324,15 @@ class PhotoGalleryState extends State<PhotoGallery> {
   @css
   static List<StyleRule> get styles => [
     css('.photo-gallery', [
+      // A largura precisa vir do pai: sem ela o álbum é dimensionado pela
+      // grade (várias colunas de 200px), estoura a tela do celular e leva os
+      // cards e a legenda para fora dela.
       css('&').styles(
         display: .flex,
         flexDirection: .column,
         alignItems: .center,
         gap: .all(16.px),
+        width: 100.percent,
       ),
       css('.section-title').styles(
         textAlign: .center,
@@ -347,7 +351,10 @@ class PhotoGalleryState extends State<PhotoGallery> {
         width: 100.percent,
         maxWidth: 1000.px,
         raw: {
-          'grid-template-columns': 'repeat(auto-fill, minmax(200px, 1fr))',
+          // `min(200px, 100%)`: numa tela mais estreita que uma coluna, a
+          // coluna encolhe junto em vez de a grade transbordar.
+          'grid-template-columns':
+              'repeat(auto-fill, minmax(min(200px, 100%), 1fr))',
         },
       ),
       css('.photo-gallery-card', [

@@ -210,11 +210,16 @@ class PhotoCaptureState extends State<PhotoCapture> {
   @css
   static List<StyleRule> get styles => [
     css('.photo-capture', [
+      // Sem a largura explícita o capturador seria dimensionado pelo próprio
+      // conteúdo (o palco de 420px) e estouraria a tela em celulares
+      // estreitos, levando o botão de trocar câmera para fora dela.
       css('&').styles(
         display: .flex,
         flexDirection: .column,
         alignItems: .center,
         gap: .all(16.px),
+        width: 100.percent,
+        maxWidth: 420.px,
         padding: .all(16.px),
       ),
       css('.photo-capture-error').styles(

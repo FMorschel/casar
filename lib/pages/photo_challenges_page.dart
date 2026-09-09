@@ -43,10 +43,13 @@ class PhotoChallengesPage extends StatelessComponent {
 
   @css
   static List<StyleRule> get styles => [
+    // Um bloco comum, de propósito, e não um flex column: como flex item o
+    // cabeçalho `sticky` largava o topo assim que a página passava a rolar
+    // (foi só o álbum carregar para ela ficar alta o bastante) e ia parar no
+    // fim dela. A navbar de `/`, que é `sticky` igual mas mora num bloco,
+    // nunca teve isso. Ninguém aqui perde a centralização: cada filho já
+    // centraliza o próprio conteúdo.
     css('.photo-challenges-page').styles(
-      display: .flex,
-      flexDirection: .column,
-      alignItems: .center,
       minHeight: 100.vh,
     ),
     css('.photo-challenges-header').styles(

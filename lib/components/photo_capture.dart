@@ -90,11 +90,20 @@ class PhotoCaptureState extends State<PhotoCapture> {
     }
   }
 
+  /// Alterna entre a câmera traseira e a frontal.
+  ///
+  /// Mesma regra do [_capture]: nada aqui pode falhar em silêncio. Este botão
+  /// já ficou quebrado sem dar um pio porque a exceção subia sem ninguém para
+  /// pegá-la, e um botão mudo é indistinguível de um botão morto.
   void _switchCamera() {
-    _stopCamera();
-    _facingMode = _facingMode == 'environment' ? 'user' : 'environment';
-    setState(() => _stream = null);
-    _startCamera();
+    try {
+      _stopCamera();
+      _facingMode = _facingMode == 'environment' ? 'user' : 'environment';
+      setState(() => _stream = null);
+      _startCamera();
+    } catch (error) {
+      setState(() => _error = 'Não deu para trocar de câmera: $error');
+    }
   }
 
   void _stopCamera() {

@@ -69,9 +69,18 @@ versão → Implantar.** Isso mantém a mesma URL `/exec` de sempre — não use
 Depois cole a mesma URL (sem mudar nada) em `photoChallengesEndpoint`, em
 [`lib/constants/config.dart`](../../lib/constants/config.dart).
 
-### Aba criada automaticamente
+### Abas criadas automaticamente
 
-- `desafios_fotos` — `sorteio_timestamp | nome | desafio | foto_url |
+- `convidados` — `id | nome | criado_em | renomeado_em`, **uma linha por
+  convidado**. O `id` é gerado pelo próprio script (8 caracteres, sem `0`/`o`
+  nem `1`/`l` para não se confundirem numa leitura na planilha) na primeira
+  vez que o convidado sorteia. É a única fonte do nome que aparece no
+  álbum — as linhas de `desafios_fotos` guardam o `id`, não o nome, então
+  corrigir um nome errado aqui vale para todas as fotos daquele convidado
+  sem tocar em nenhuma linha delas. `renomeado_em` fica vazio até o
+  convidado (ou alguém à mão na planilha) corrigir o nome dele pelo menos
+  uma vez.
+- `desafios_fotos` — `sorteio_timestamp | guest_id | desafio | foto_url |
   tirada_em`, **uma linha por desafio**, não uma linha por convidado. Um
   convidado tem 3 linhas por sorteio (ele pode sortear mais de uma vez) mais
   uma linha para cada desafio que ele mesmo escreveu.
@@ -80,36 +89,65 @@ Depois cole a mesma URL (sem mudar nada) em `photoChallengesEndpoint`, em
   `doPostUpload_` os preenche (não cria uma linha nova). O primeiro sorteio é
   idempotente: revisitar a página não sorteia de novo.
 
+  Até uma versão anterior deste script, a coluna B guardava o nome do
+  convidado direto; a primeira leitura depois de atualizar o `Code.gs`
+  migra sozinha essa coluna para `guest_id` (criando uma linha em
+  `convidados` para cada nome distinto que já estivesse na planilha) —
+  não precisa mexer na planilha à mão.
+
 ### Ações novas
 
 - `GET ?action=gallery` — devolve `{photos: [{challenge, author, url,
   timestamp}, ...]}`, uma entrada por linha com `foto_url` preenchida
   (`timestamp` é `tirada_em`, o instante em que o convidado confirmou a foto
-  no app, não o instante do upload).
-- `POST {action:'draw', name}` — sorteia (ou recupera) os desafios de
-  `name`, devolvendo `{challenges, photos}` com **tudo** que ele já tem (de
-  todos os sorteios, mais os que ele escreveu). As regras do sorteio, em
-  ordem: nenhuma frase se repete para o mesmo convidado; pelo menos uma
-  prioritária por sorteio (enquanto sobrar alguma que ele não pegou); as
-  outras vagas saem de qualquer frase, com peso maior para as prioritárias
-  (não é obrigatório sair uma não prioritária); e, em qualquer vaga, frases
-  que nenhum convidado pegou ainda têm preferência sobre as que já saíram
-  para alguém. A mesma frase pode sair para convidados diferentes.
-- `POST {action:'drawMore', name}` — sorteia mais um trio, para quem já
-  mandou as fotos de todos os desafios que tinha. Devolve a lista completa
-  do convidado (a de antes mais o sorteio novo); quando o banco de frases
-  acaba para ele, devolve só a de antes e o site entende que agora só
-  sobraram os desafios escritos à mão. Erros: `not_started` (nunca sorteou)
-  e `pending_photos` (ainda tem desafio sem foto).
-- `POST {action:'upload', name, challenge, photo, mimeType, timestamp,
+  no app, não o instante do upload). `author` vem da aba `convidados`,
+  buscado pelo `guest_id` a cada leitura — uma foto de um convidado que já
+  não existe mais nessa aba (linha apagada à mão) ainda aparece no álbum,
+  só que como "Convidado".
+- `POST {action:'draw', name, id?}` — sorteia (ou recupera) os desafios do
+  convidado, criando a linha dele em `convidados` na primeira vez.
+  `id` é opcional: quando o site já tem um id salvo (de um sorteio
+  anterior), manda ele também, e o servidor casa por `id` antes de tentar
+  pelo `name` — assim reconhece o convidado mesmo que o nome dele tenha
+  sido corrigido em outro aparelho desde então. Devolve `{id, name,
+  challenges, photos}` com **tudo** que o convidado já tem (de todos os
+  sorteios, mais os que ele escreveu); `name` é o nome como está na
+  planilha agora, que o site deve adotar como o nome atual. As regras do
+  sorteio, em ordem: nenhuma frase se repete para o mesmo convidado; pelo
+  menos uma prioritária por sorteio (enquanto sobrar alguma que ele não
+  pegou); as outras vagas saem de qualquer frase, com peso maior para as
+  prioritárias (não é obrigatório sair uma não prioritária); e, em
+  qualquer vaga, frases que nenhum convidado pegou ainda têm preferência
+  sobre as que já saíram para alguém. A mesma frase pode sair para
+  convidados diferentes.
+- `POST {action:'drawMore', name, id?}` — sorteia mais um trio, para quem
+  já mandou as fotos de todos os desafios que tinha. Devolve `{id, name,
+  challenges, photos}` com a lista completa do convidado (a de antes mais
+  o sorteio novo); quando o banco de frases acaba para ele, devolve só a
+  de antes e o site entende que agora só sobraram os desafios escritos à
+  mão. Erros: `not_started` (nunca sorteou) e `pending_photos` (ainda tem
+  desafio sem foto).
+- `POST {action:'check', name}` — só consulta se `name` já tem desafios
+  sorteados, sem sortear nem gravar nada (usado pelo portão do site antes
+  de assumir um nome já usado). Devolve `{id, name, challenges}`; `id`
+  vazio e `challenges` vazio quando ninguém sorteou com esse nome ainda.
+- `POST {action:'rename', id, name}` — corrige o nome do convidado de
+  `id` para `name`. Muda só a célula de nome em `convidados` — as fotos já
+  enviadas aparecem com o nome novo na próxima leitura do álbum, sem
+  precisar mexer em `desafios_fotos`. Recusa com `name_taken` se outro
+  convidado já estiver usando esse nome, e com `unknown_guest` se o `id`
+  não existir.
+- `POST {action:'upload', name, id?, challenge, photo, mimeType, timestamp,
   custom}` — salva a foto (`photo` em base64, sem o prefixo
   `data:...;base64,`) no Drive e preenche `foto_url`/`tirada_em` na linha do
   desafio já sorteado (`timestamp` é quando a foto foi tirada, mandado pelo
-  cliente). Com `custom: true`, o desafio é uma frase escrita pelo próprio
-  convidado e não existe linha esperando por ela: a linha é criada aqui, já
-  com a foto, depois de passar pelas mesmas regras de texto que o site
-  cobra (começa com maiúscula, pelo menos três palavras de duas letras ou
-  mais, e não pode repetir uma frase do banco de desafios).
+  cliente). Como em `draw`, `id` (quando o site já tem um) tem prioridade
+  sobre `name` para achar o convidado. Com `custom: true`, o desafio é uma
+  frase escrita pelo próprio convidado e não existe linha esperando por
+  ela: a linha é criada aqui, já com a foto, depois de passar pelas mesmas
+  regras de texto que o site cobra (começa com maiúscula, pelo menos três
+  palavras de duas letras ou mais, e não pode repetir uma frase do banco de
+  desafios).
 
 Sem `action` (nos dois verbos), o comportamento é exatamente o mesmo de
 hoje — a lista de presentes não muda em nada.
@@ -119,3 +157,7 @@ e `tirada_em` da linha correspondente na aba `desafios_fotos` (não a linha
 inteira — ela ainda representa o desafio sorteado daquele convidado) **e**
 o arquivo correspondente no Drive — não há endpoint de moderação, igual ao
 gift-ideas.
+
+Para corrigir o nome de um convidado à mão (sem passar pelo site), edite a
+célula de nome na aba `convidados` — vale para todas as fotos dele, já que
+elas apontam para o `id`, não para o nome.

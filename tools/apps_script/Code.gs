@@ -28,14 +28,39 @@ var MAX_ROWS = 500;
  * convidado), não uma linha por convidado. `foto_url`/`tirada_em` ficam
  * vazios até o convidado confirmar a foto daquele desafio — é a mesma linha
  * que vira uma entrada da galeria quando preenchida (FR-16).
+ *
+ * A linha pertence a um `guest_id`, não a um nome: o nome mora só na aba
+ * GUEST_SHEET_NAME. Assim, corrigir um nome digitado errado é uma célula só
+ * e todas as fotos daquele convidado já aparecem com o nome novo no álbum,
+ * sem tocar em nenhuma linha daqui.
  */
 var PHOTO_SHEET_NAME = 'desafios_fotos';
-var PHOTO_HEADERS = ['sorteio_timestamp', 'nome', 'desafio', 'foto_url', 'tirada_em'];
+var PHOTO_HEADERS = ['sorteio_timestamp', 'guest_id', 'desafio', 'foto_url', 'tirada_em'];
+
+/**
+ * Aba dos convidados: uma linha por convidado, com o `id` gerado aqui e o
+ * nome que o álbum mostra. É a única fonte desse nome — as linhas de
+ * desafio/foto guardam só o `guest_id`.
+ *
+ * O nome pode ser corrigido pelo próprio convidado (veja doPostRename_) ou
+ * à mão na planilha; nos dois casos o álbum reflete na próxima leitura.
+ * `renomeado_em` fica vazio enquanto ninguém corrigiu aquele nome.
+ */
+var GUEST_SHEET_NAME = 'convidados';
+var GUEST_HEADERS = ['id', 'nome', 'criado_em', 'renomeado_em'];
+
+/**
+ * Alfabeto do `id` de convidado: minúsculas e números, sem os caracteres
+ * que se confundem quando alguém lê o id da planilha (`0`/`o`, `1`/`l`).
+ */
+var GUEST_ID_ALPHABET = '23456789abcdefghijkmnpqrstuvwxyz';
+var GUEST_ID_LENGTH = 8;
 
 /** Id da pasta do Drive onde as fotos dos desafios são salvas. */
 var PHOTOS_FOLDER_ID = '1DKM-GqX_0QNhYQELCjREr_ROKL977u-d';
 
 var MAX_GUEST_NAME = 120;
+var MAX_GUEST_ID = 40;
 var MAX_CHALLENGE = 200;
 var MAX_MIME = 40;
 
@@ -139,8 +164,61 @@ function photoSheet_() {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(PHOTO_HEADERS);
   }
+  migratePhotoSheetToGuestIds_(sheet);
   applyDateTimeFormat_(sheet, [1, 5]); // sorteio_timestamp, tirada_em
   return sheet;
+}
+
+function guestSheet_() {
+  var ss = ss_();
+  var sheet = ss.getSheetByName(GUEST_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(GUEST_SHEET_NAME);
+  }
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(GUEST_HEADERS);
+  }
+  applyDateTimeFormat_(sheet, [3, 4]); // criado_em, renomeado_em
+  return sheet;
+}
+
+/**
+ * Passa a aba de desafios do nome para o `guest_id` na coluna B.
+ *
+ * Até a versão anterior deste script a coluna B guardava o nome do
+ * convidado; a partir daqui guarda o id dele, e o nome mora só na aba
+ * GUEST_SHEET_NAME. A conversão roda uma vez só (o cabeçalho da coluna é o
+ * que diz se já rodou), criando um convidado por nome distinto que já
+ * estiver na planilha — ninguém perde os desafios que já sorteou.
+ */
+function migratePhotoSheetToGuestIds_(sheet) {
+  if (String(sheet.getRange(1, 2).getValue()) === PHOTO_HEADERS[1]) return;
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var names = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+    var guests = guestSheet_();
+    var guestRows = guestRows_(guests);
+    var ids = [];
+    for (var i = 0; i < names.length; i++) {
+      var name = titleCaseName_(names[i][0]);
+      if (!name) {
+        // Linha sem nome não pertence a ninguém: fica com o id vazio e some
+        // do álbum, como já acontecia.
+        ids.push(['']);
+        continue;
+      }
+      var index = findGuestByName_(guestRows, normalizeName_(name));
+      ids.push([
+        index === -1
+          ? createGuest_(guests, guestRows, name)
+          : String(guestRows[index][0]),
+      ]);
+    }
+    sheet.getRange(2, 2, ids.length, 1).setValues(ids);
+  }
+
+  sheet.getRange(1, 2).setValue(PHOTO_HEADERS[1]);
 }
 
 /**
@@ -198,6 +276,106 @@ function titleCaseName_(name) {
 function countLetters_(text) {
   var matches = String(text || '').match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g);
   return matches ? matches.length : 0;
+}
+
+/** Todas as linhas da aba de convidados (sem o cabeçalho). */
+function guestRows_(sheet) {
+  var lastRow = sheet.getLastRow();
+  return lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, GUEST_HEADERS.length).getValues()
+    : [];
+}
+
+/** Posição do convidado cujo nome normalizado é [key] em [rows], ou -1. */
+function findGuestByName_(rows, key) {
+  for (var i = 0; i < rows.length; i++) {
+    if (normalizeName_(rows[i][1]) === key) return i;
+  }
+  return -1;
+}
+
+/** Posição do convidado de [id] em [rows], ou -1. */
+function findGuestById_(rows, id) {
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === id) return i;
+  }
+  return -1;
+}
+
+/** Nome de cada convidado, por id — o que o álbum mostra como autor. */
+function guestNamesById_(rows) {
+  var names = {};
+  for (var i = 0; i < rows.length; i++) {
+    names[String(rows[i][0])] = String(rows[i][1]);
+  }
+  return names;
+}
+
+function randomGuestId_() {
+  var id = '';
+  for (var i = 0; i < GUEST_ID_LENGTH; i++) {
+    id += GUEST_ID_ALPHABET.charAt(
+      Math.floor(Math.random() * GUEST_ID_ALPHABET.length)
+    );
+  }
+  return id;
+}
+
+/**
+ * Um id que ainda não está em [rows]. O espaço é grande demais (32^8) para
+ * a repetição acontecer na prática, mas o id é a identidade do convidado —
+ * o sorteio e as fotos dele penduram nisso —, então não vale confiar na
+ * sorte.
+ */
+function newGuestId_(rows) {
+  var used = {};
+  for (var i = 0; i < rows.length; i++) used[String(rows[i][0])] = true;
+
+  var id = randomGuestId_();
+  while (used[id]) id = randomGuestId_();
+  return id;
+}
+
+/**
+ * Cria o convidado [name] e devolve o id novo. [rows] é a leitura atual da
+ * aba, que também é atualizada — quem chamar em laço (a migração) não
+ * precisa reler a planilha a cada convidado.
+ */
+function createGuest_(sheet, rows, name) {
+  var id = newGuestId_(rows);
+  var createdAt = new Date();
+  sheet.appendRow([id, name, createdAt, '']);
+  rows.push([id, name, createdAt, '']);
+  return id;
+}
+
+function guestAt_(rows, index) {
+  return { id: String(rows[index][0]), name: String(rows[index][1]) };
+}
+
+/**
+ * Acha o convidado de uma requisição, sem criar nada: pelo `id` que o site
+ * guardou e, na falta dele, pelo nome.
+ *
+ * O nome ainda é caminho de entrada porque o site só ganha um id na
+ * primeira resposta de `draw` — antes disso (ou num aparelho novo, onde o
+ * convidado redigita o nome) é tudo o que ele tem para se identificar. Um
+ * id que não existe mais (linha apagada na planilha) também cai no nome, em
+ * vez de deixar o convidado preso a um id órfão.
+ *
+ * Devolve `null` quando não achou ninguém.
+ */
+function resolveGuest_(rows, body) {
+  var id = clean_(body.id, MAX_GUEST_ID);
+  if (id) {
+    var byId = findGuestById_(rows, id);
+    if (byId !== -1) return guestAt_(rows, byId);
+  }
+
+  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
+  if (!name) return null;
+  var byName = findGuestByName_(rows, normalizeName_(name));
+  return byName === -1 ? null : guestAt_(rows, byName);
 }
 
 /** GET: devolve todas as ideias, ou a galeria de fotos com `?action=gallery`. */
@@ -272,6 +450,11 @@ function doGetGallery_() {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return json_({ photos: [] });
 
+  // O nome do autor é buscado na aba de convidados a cada leitura, e não
+  // copiado para a linha da foto: é o que faz uma correção de nome (pelo
+  // site ou à mão na planilha) valer para todas as fotos de quem corrigiu.
+  var names = guestNamesById_(guestRows_(guestSheet_()));
+
   var rows = sheet.getRange(2, 1, lastRow - 1, PHOTO_HEADERS.length).getValues();
   var photos = rows
     .filter(function (row) {
@@ -279,9 +462,12 @@ function doGetGallery_() {
       return String(row[3]).trim() !== '';
     })
     .map(function (row) {
+      var author = names[String(row[1])];
       return {
         timestamp: new Date(row[4]).toISOString(), // tirada_em
-        author: String(row[1]),
+        // Sem convidado (linha apagada da aba `convidados`) a foto continua
+        // no álbum, só que sem dono — perder a foto seria pior.
+        author: author || 'Convidado',
         challenge: String(row[2]),
         url: normalizePhotoUrl_(row[3]),
       };
@@ -308,6 +494,7 @@ function doPost(e) {
   if (body.action === 'draw') return doPostDraw_(body);
   if (body.action === 'drawMore') return doPostDrawMore_(body);
   if (body.action === 'check') return doPostCheck_(body);
+  if (body.action === 'rename') return doPostRename_(body);
   if (body.action === 'upload') return doPostUpload_(body);
   return doPostIdea_(body);
 }
@@ -316,24 +503,72 @@ function doPost(e) {
  * POST action=check: só consulta se [name] já tem desafios sorteados, sem
  * sortear nem gravar nada — usado para perguntar "é você?" antes de assumir
  * a identidade de um nome já usado por outro convidado.
+ *
+ * Devolve também o `id` desse convidado, que é o que o site guarda quando o
+ * convidado confirma ser ele (ex.: entrando por um aparelho novo).
  */
 function doPostCheck_(body) {
   var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
   if (!name) return json_({ ok: false, error: 'missing_name' });
-  var key = normalizeName_(name);
 
-  var sheet = photoSheet_();
-  var lastRow = sheet.getLastRow();
-  var rows = lastRow >= 2
-    ? sheet.getRange(2, 1, lastRow - 1, PHOTO_HEADERS.length).getValues()
-    : [];
+  var guests = guestRows_(guestSheet_());
+  var index = findGuestByName_(guests, normalizeName_(name));
+  if (index === -1) return json_({ ok: true, id: '', name: name, challenges: [] });
 
-  var existing = [];
-  for (var i = 0; i < rows.length; i++) {
-    if (normalizeName_(rows[i][1]) === key) existing.push(String(rows[i][2]));
+  var guest = guestAt_(guests, index);
+  var state = guestState_(photoRows_(photoSheet_()), guest.id);
+  return json_({
+    ok: true,
+    id: guest.id,
+    name: guest.name,
+    challenges: state.challenges,
+  });
+}
+
+/**
+ * POST action=rename: corrige o nome de um convidado que digitou errado da
+ * primeira vez (ex.: sem sobrenome, com erro de digitação).
+ *
+ * Muda só a célula de nome na aba de convidados — as linhas de
+ * desafio/foto guardam o `guest_id`, não o nome, então o álbum já mostra o
+ * nome novo em todas as fotos dele sem precisar tocar nelas. `renomeado_em`
+ * fica marcado, para quem olhar a planilha saber que aquele nome já foi
+ * corrigido ao menos uma vez.
+ *
+ * Sem senha nem confirmação, igual ao resto deste endpoint: quem tem o
+ * `id` do convidado (salvo no navegador dele desde o sorteio) pode
+ * corrigir o nome dele.
+ */
+function doPostRename_(body) {
+  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
+  if (!name) return json_({ ok: false, error: 'missing_name' });
+  if (countLetters_(name) < 3) return json_({ ok: false, error: 'name_too_short' });
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var sheet = guestSheet_();
+    var rows = guestRows_(sheet);
+    var guest = resolveGuest_(rows, body);
+    if (!guest) return json_({ ok: false, error: 'unknown_guest' });
+
+    // Outro convidado já usando o nome novo: recusa, para não misturar o
+    // histórico de dois convidados sob o mesmo nome (a mesma checagem que
+    // já vale para nomes novos no portão, ver doPostCheck_/doPostDraw_).
+    var key = normalizeName_(name);
+    var clash = findGuestByName_(rows, key);
+    if (clash !== -1 && String(rows[clash][0]) !== guest.id) {
+      return json_({ ok: false, error: 'name_taken' });
+    }
+
+    var index = findGuestById_(rows, guest.id);
+    // +2: a leitura de `rows` começa na linha 2 (linha 1 é o cabeçalho).
+    sheet.getRange(index + 2, 2, 1, 2).setValues([[name, new Date()]]);
+
+    return json_({ ok: true, id: guest.id, name: name });
+  } finally {
+    lock.releaseLock();
   }
-
-  return json_({ ok: true, challenges: existing });
 }
 
 function doPostIdea_(body) {
@@ -373,16 +608,16 @@ function photoRows_(sheet) {
 }
 
 /**
- * O que o convidado `key` já tem: todos os desafios dele (de todos os
+ * O que o convidado de [guestId] já tem: todos os desafios dele (de todos os
  * sorteios mais os que ele escreveu, na ordem da planilha), as fotos já
  * confirmadas e quantos desafios ainda estão sem foto.
  */
-function guestState_(rows, key) {
+function guestState_(rows, guestId) {
   var challenges = [];
   var photos = {};
   var pending = 0;
   for (var i = 0; i < rows.length; i++) {
-    if (normalizeName_(rows[i][1]) !== key) continue;
+    if (String(rows[i][1]) !== guestId) continue;
     var challenge = String(rows[i][2]);
     challenges.push(challenge);
     var url = String(rows[i][3]).trim();
@@ -413,23 +648,37 @@ function usedTexts_(rows) {
  * Grava um desafio por linha; foto_url/tirada_em ficam vazios até a
  * confirmação da foto (doPostUpload_ preenche na mesma linha).
  */
-function appendChallenges_(sheet, name, challenges) {
+function appendChallenges_(sheet, guestId, challenges) {
   var sorteioTimestamp = new Date();
   for (var i = 0; i < challenges.length; i++) {
-    sheet.appendRow([sorteioTimestamp, name, challenges[i], '', '']);
+    sheet.appendRow([sorteioTimestamp, guestId, challenges[i], '', '']);
   }
 }
 
-/** POST action=draw: sorteia (ou recupera) os desafios de um convidado. */
+/**
+ * POST action=draw: sorteia (ou recupera) os desafios de um convidado,
+ * criando a linha dele na aba de convidados na primeira vez.
+ *
+ * A resposta sempre traz `id` e `name`: o `id` é o que o site guarda para
+ * se identificar daqui pra frente (e o que ele precisa para corrigir o
+ * nome), e o `name` é o que está na planilha — que pode não ser o que este
+ * navegador tem salvo, se o convidado corrigiu o nome em outro aparelho.
+ */
 function doPostDraw_(body) {
-  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
-  if (!name) return json_({ ok: false, error: 'missing_name' });
-  if (countLetters_(name) < 3) return json_({ ok: false, error: 'name_too_short' });
-  var key = normalizeName_(name);
-
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
+    var guestsSheet = guestSheet_();
+    var guests = guestRows_(guestsSheet);
+    var guest = resolveGuest_(guests, body);
+
+    if (!guest) {
+      var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
+      if (!name) return json_({ ok: false, error: 'missing_name' });
+      if (countLetters_(name) < 3) return json_({ ok: false, error: 'name_too_short' });
+      guest = { id: createGuest_(guestsSheet, guests, name), name: name };
+    }
+
     var sheet = photoSheet_();
     var rows = photoRows_(sheet);
 
@@ -438,15 +687,27 @@ function doPostDraw_(body) {
     // desafios que ele mesmo escreveu. `photos` traz a foto_url de quem já
     // confirmou algum deles antes, para o site marcar como feito sem
     // depender só do localStorage (ex.: convidado em outro aparelho).
-    var state = guestState_(rows, key);
+    var state = guestState_(rows, guest.id);
     if (state.challenges.length > 0) {
-      return json_({ ok: true, challenges: state.challenges, photos: state.photos });
+      return json_({
+        ok: true,
+        id: guest.id,
+        name: guest.name,
+        challenges: state.challenges,
+        photos: state.photos,
+      });
     }
 
     var challenges = pickChallenges_({}, usedTexts_(rows), CHALLENGES_PER_DRAW);
-    appendChallenges_(sheet, name, challenges);
+    appendChallenges_(sheet, guest.id, challenges);
 
-    return json_({ ok: true, challenges: challenges, photos: {} });
+    return json_({
+      ok: true,
+      id: guest.id,
+      name: guest.name,
+      challenges: challenges,
+      photos: {},
+    });
   } finally {
     lock.releaseLock();
   }
@@ -461,16 +722,15 @@ function doPostDraw_(body) {
  * pela ausência de novidades que só sobraram os desafios escritos à mão.
  */
 function doPostDrawMore_(body) {
-  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
-  if (!name) return json_({ ok: false, error: 'missing_name' });
-  var key = normalizeName_(name);
-
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
+    var guest = resolveGuest_(guestRows_(guestSheet_()), body);
+    if (!guest) return json_({ ok: false, error: 'not_started' });
+
     var sheet = photoSheet_();
     var rows = photoRows_(sheet);
-    var state = guestState_(rows, key);
+    var state = guestState_(rows, guest.id);
 
     if (state.challenges.length === 0) return json_({ ok: false, error: 'not_started' });
     if (state.pending > 0) return json_({ ok: false, error: 'pending_photos' });
@@ -481,10 +741,12 @@ function doPostDrawMore_(body) {
     }
 
     var challenges = pickChallenges_(pickedByGuest, usedTexts_(rows), CHALLENGES_PER_DRAW);
-    if (challenges.length > 0) appendChallenges_(sheet, name, challenges);
+    if (challenges.length > 0) appendChallenges_(sheet, guest.id, challenges);
 
     return json_({
       ok: true,
+      id: guest.id,
+      name: guest.name,
       challenges: state.challenges.concat(challenges),
       photos: state.photos,
     });
@@ -602,9 +864,9 @@ function isValidCustomChallenge_(text) {
 
 /** POST action=upload: salva a foto de um desafio confirmado. */
 function doPostUpload_(body) {
-  var name = titleCaseName_(clean_(body.name, MAX_GUEST_NAME));
-  if (!name) return json_({ ok: false, error: 'missing_name' });
-  if (countLetters_(name) < 3) return json_({ ok: false, error: 'name_too_short' });
+  var guest = resolveGuest_(guestRows_(guestSheet_()), body);
+  if (!guest) return json_({ ok: false, error: 'unknown_guest' });
+  var name = guest.name;
 
   var challenge = clean_(body.challenge, MAX_CHALLENGE);
   if (!challenge) return json_({ ok: false, error: 'missing_challenge' });
@@ -640,13 +902,12 @@ function doPostUpload_(body) {
       ? sheet.getRange(2, 1, lastRow - 1, PHOTO_HEADERS.length).getValues()
       : [];
 
-    // Acha a linha do desafio sorteado de `name` (doPostDraw_ já criou uma
-    // linha vazia de foto_url/tirada_em pra cada desafio) e preenche nela —
-    // não cria uma linha nova.
-    var key = normalizeName_(name);
+    // Acha a linha do desafio sorteado do convidado (doPostDraw_ já criou
+    // uma linha vazia de foto_url/tirada_em pra cada desafio) e preenche
+    // nela — não cria uma linha nova.
     var rowIndex = -1;
     for (var i = 0; i < rows.length; i++) {
-      if (normalizeName_(rows[i][1]) === key && String(rows[i][2]) === challenge) {
+      if (String(rows[i][1]) === guest.id && String(rows[i][2]) === challenge) {
         rowIndex = i;
         break;
       }
@@ -659,7 +920,7 @@ function doPostUpload_(body) {
       if (!isValidCustomChallenge_(challenge)) {
         return json_({ ok: false, error: 'invalid_challenge' });
       }
-      sheet.appendRow([timestamp, name, challenge, url, timestamp]);
+      sheet.appendRow([timestamp, guest.id, challenge, url, timestamp]);
     } else if (String(rows[rowIndex][3]).trim() !== '') {
       return json_({ ok: false, error: 'duplicate' });
     } else {

@@ -98,8 +98,16 @@ class PhotoCaptureState extends State<PhotoCapture> {
   }
 
   void _stopCamera() {
-    for (final track in _stream?.getTracks().toDart ?? const []) {
-      track.stop();
+    // O tipo do `track` fica explícito de propósito: com um `?? const []` o
+    // Dart inferia `dynamic` aqui, e `track.stop()` virava uma chamada
+    // dinâmica — que no JS compilado procura um método Dart minificado num
+    // objeto puro do navegador e estoura `NoSuchMethodError`. Era isso que
+    // quebrava `Capturar` e `Trocar câmera` no celular.
+    final stream = _stream;
+    if (stream != null) {
+      for (final web.MediaStreamTrack track in stream.getTracks().toDart) {
+        track.stop();
+      }
     }
     _stream = null;
   }

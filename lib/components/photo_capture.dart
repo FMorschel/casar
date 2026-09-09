@@ -173,14 +173,7 @@ class PhotoCaptureState extends State<PhotoCapture> {
               onClick: _startCamera,
               [.text('Permitir acesso à câmera')],
             ),
-          ])
-        else if (_stream != null)
-          button(
-            classes: 'photo-capture-switch',
-            onClick: _switchCamera,
-            attributes: const {'aria-label': 'Trocar câmera'},
-            [.text('🔄')],
-          ),
+          ]),
         Component.element(
           tag: 'canvas',
           id: _canvasId,
@@ -188,14 +181,26 @@ class PhotoCaptureState extends State<PhotoCapture> {
           children: const [],
         ),
       ]),
+      // Nenhum botão fica por cima do vídeo: no Android a camada de vídeo
+      // costuma ser promovida para uma superfície do próprio sistema, que
+      // pinta acima do HTML e engole o toque de quem estiver em cima dela.
+      // Por isso trocar de câmera saiu de dentro do palco e virou um botão
+      // ao lado de capturar.
       div(classes: 'photo-capture-actions', [
-        if (captured == null)
+        if (captured == null) ...[
           button(
             onClick: _capture,
             attributes: {if (_stream == null) 'disabled': ''},
             [.text('Capturar')],
-          )
-        else ...[
+          ),
+          if (_stream != null)
+            button(
+              classes: 'photo-capture-switch',
+              onClick: _switchCamera,
+              attributes: const {'aria-label': 'Trocar câmera'},
+              [.text('🔄 Trocar câmera')],
+            ),
+        ] else ...[
           button(onClick: _confirm, [.text('Confirmar')]),
           button(
             classes: 'photo-capture-retake',
@@ -240,6 +245,7 @@ class PhotoCaptureState extends State<PhotoCapture> {
           maxWidth: 420.px,
           minHeight: 240.px,
           maxHeight: 50.vh,
+          raw: const {'max-height': '50svh'},
           radius: .circular(AppRadius.md),
           overflow: .hidden,
           backgroundColor: AppColors.bgSoft,
@@ -260,24 +266,10 @@ class PhotoCaptureState extends State<PhotoCapture> {
           justifyContent: .center,
           padding: .all(16.px),
         ),
-        css('.photo-capture-switch').styles(
-          position: Position.absolute(top: 12.px, right: 12.px),
-          width: 40.px,
-          height: 40.px,
-          radius: .circular(50.percent),
-          border: .unset,
-          backgroundColor: const Color.rgba(0, 0, 0, 0.45),
-          color: Colors.white,
-          fontSize: 18.px,
-          cursor: .pointer,
-        ),
       ]),
-      // Grudados no rodapé da tela enquanto o capturador estiver visível:
-      // mesmo com o vídeo ocupando meia tela, capturar e confirmar ficam
-      // sempre ao alcance do polegar, sem precisar rolar até achá-los.
+      // Logo abaixo do palco, no fluxo normal — nunca sobrepondo o vídeo.
+      // O teto de altura do palco é que mantém estes botões perto da dobra.
       css('.photo-capture-actions').styles(
-        position: .sticky(bottom: 16.px),
-        zIndex: ZIndex(1),
         display: .flex,
         flexWrap: .wrap,
         justifyContent: .center,
@@ -300,7 +292,7 @@ class PhotoCaptureState extends State<PhotoCapture> {
           cursor: .notAllowed,
         ),
       ]),
-      css('.photo-capture-retake').styles(
+      css('.photo-capture-retake, .photo-capture-switch').styles(
         backgroundColor: AppColors.bgElevated,
         color: AppColors.accentStrong,
         border: .all(style: .solid, color: AppColors.border, width: 1.px),

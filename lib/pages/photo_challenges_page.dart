@@ -20,6 +20,7 @@ import '../utils/custom_challenge.dart';
 import '../utils/guest_challenge_draw.dart';
 import '../utils/guest_name.dart';
 import '../utils/photo_challenges_api.dart';
+import '../utils/preview_mode.dart';
 
 /// Galeria local de apoio, usada quando o Apps Script não está configurado
 /// (FR-15, FR-16 em modo degradado): guarda as fotos confirmadas por
@@ -139,8 +140,17 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   /// A última atualização manual não chegou até a planilha.
   bool _galleryRefreshFailed = false;
 
-  /// Atalho de dev: força o álbum a aparecer revelado sem esperar
-  /// [photoRevealDate] chegar de verdade.
+  /// Modo prévia ligado neste navegador (ver [readPreviewMode]): os noivos
+  /// testando o site publicado, onde `kDebugMode` é sempre falso.
+  bool _previewMode = false;
+
+  /// Se o painel de atalhos deve aparecer: em desenvolvimento ele vem de
+  /// graça, em produção só com o modo prévia ligado.
+  bool get _showPreviewPanel => kDebugMode || _previewMode;
+
+  /// Força o álbum a aparecer revelado sem esperar [photoRevealDate] chegar
+  /// de verdade — é a razão de existir do modo prévia, então já começa
+  /// ligado quando ele está ligado.
   bool _devForceReveal = false;
 
   /// Desafio pendente que o convidado tocou para tirar a foto agora. `null`
@@ -168,6 +178,13 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   int _toastSeq = 0;
 
   bool _disposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _previewMode = readPreviewMode();
+    _devForceReveal = _previewMode;
+  }
 
   @override
   void dispose() {
@@ -460,6 +477,26 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     _forgetGuestName();
   }
 
+  /// Liga o modo prévia (senha digitada no portão do nome) e já revela o
+  /// álbum, que é o que os noivos vêm testar.
+  void _enablePreviewMode() {
+    writePreviewMode(enabled: true);
+    setState(() {
+      _previewMode = true;
+      _devForceReveal = true;
+    });
+  }
+
+  /// Desliga o modo prévia e devolve o álbum ao borrão, para conferir como
+  /// a página fica para um convidado antes da data.
+  void _disablePreviewMode() {
+    writePreviewMode(enabled: false);
+    setState(() {
+      _previewMode = false;
+      _devForceReveal = false;
+    });
+  }
+
   void _appendLocalGalleryPhoto(GalleryPhoto photo) {
     if (!kIsWeb) return;
     final raw = web.window.localStorage.getItem(_localGalleryStorageKey);
@@ -609,7 +646,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       // Fora do [GuestNameGate] de propósito: o painel precisa alcançar
       // também as etapas em que o portão (ou a animação de sorteio) ainda
       // está na frente — é lá que "apagar meu nome" costuma fazer falta.
-      if (kDebugMode)
+      if (_showPreviewPanel)
         PreviewPanel(
           guestName: readGuestName(),
           albumRevealed: _devForceReveal,
@@ -617,8 +654,10 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
           onForgetGuest: _forgetGuestData,
           onToggleAlbum: () =>
               setState(() => _devForceReveal = !_devForceReveal),
+          onExit: _previewMode ? _disablePreviewMode : null,
         ),
       GuestNameGate(
+        onPreviewModeRequested: _enablePreviewMode,
         builder: (context, guestName) {
           if (_guestName != guestName) {
             Future.microtask(() => _startFor(guestName));

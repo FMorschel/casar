@@ -7,6 +7,7 @@ import '../constants/theme.dart';
 import '../utils/guest_challenge_draw.dart';
 import '../utils/guest_name.dart';
 import '../utils/photo_challenges_api.dart';
+import '../utils/preview_mode.dart';
 import 'loading_indicator.dart';
 
 /// Portão de identidade do convidado (FR-2, FR-3, FR-4).
@@ -20,9 +21,18 @@ import 'loading_indicator.dart';
 /// seu próprio ponto de hidratação — e pode receber um callback normal como
 /// [builder], já que não cruza a fronteira servidor/cliente sozinho.
 class GuestNameGate extends StatefulComponent {
-  const GuestNameGate({required this.builder, super.key});
+  const GuestNameGate({
+    required this.builder,
+    this.onPreviewModeRequested,
+    super.key,
+  });
 
   final Component Function(BuildContext context, String guestName) builder;
+
+  /// Avisa que a senha do modo prévia (ver [isPreviewModeCode]) foi digitada
+  /// no lugar do nome. Quem liga o modo de fato é a página — o portão só
+  /// reconhece a senha e volta a perguntar o nome.
+  final VoidCallback? onPreviewModeRequested;
 
   @override
   State<GuestNameGate> createState() => GuestNameGateState();
@@ -41,6 +51,9 @@ enum _GateStep {
 
   /// Convidado disse que não é a mesma pessoa do sorteio existente.
   rejected,
+
+  /// A senha do modo prévia foi digitada no lugar do nome.
+  previewEnabled,
 }
 
 class GuestNameGateState extends State<GuestNameGate> {
@@ -75,6 +88,15 @@ class GuestNameGateState extends State<GuestNameGate> {
   /// Checa na planilha se [normalized] já tem desafios sorteados (FR-8)
   /// antes de assumir esse nome — pode ser outra pessoa com o mesmo nome.
   Future<void> _submit() async {
+    if (isPreviewModeCode(nameInput)) {
+      component.onPreviewModeRequested?.call();
+      setState(() {
+        nameInput = '';
+        _step = _GateStep.previewEnabled;
+      });
+      return;
+    }
+
     final normalized = normalizeGuestName(nameInput);
     if (!isGuestNameLongEnough(normalized)) return;
 
@@ -144,6 +166,7 @@ class GuestNameGateState extends State<GuestNameGate> {
         _GateStep.checking => const LoadingIndicator('Verificando nome…'),
         _GateStep.confirm => _buildConfirmCard(),
         _GateStep.rejected => _buildRejectedCard(),
+        _GateStep.previewEnabled => _buildPreviewEnabledCard(),
       },
     ]);
   }
@@ -204,6 +227,20 @@ class GuestNameGateState extends State<GuestNameGate> {
           [.text('Não, sou outra pessoa')],
         ),
       ]),
+    ]);
+  }
+
+  Component _buildPreviewEnabledCard() {
+    return div(classes: 'guest-name-card', [
+      h2([.text('Modo prévia ligado')]),
+      p([
+        .text(
+          'O álbum vai aparecer sem o borrão de antes da data, e o painel 🛠 '
+          'no canto da tela deixa você trocar de nome quantas vezes quiser. '
+          'Agora escolha com que nome quer entrar.',
+        ),
+      ]),
+      button(onClick: _tryAnotherName, [.text('Escolher um nome')]),
     ]);
   }
 

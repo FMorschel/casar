@@ -104,6 +104,13 @@ class _ToastEntry {
 class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   final _api = const PhotoChallengesApi();
 
+  /// Referência ao portão do nome, para avisá-lo de uma correção de nome
+  /// (ver [_renameGuest]) sem passar por ele de novo — sem isso, o portão
+  /// continuaria enxergando o nome antigo e a comparação em [build] achava
+  /// que um convidado diferente tinha aparecido, sorteando os desafios de
+  /// novo por engano.
+  final _gateKey = GlobalStateKey<GuestNameGateState>();
+
   /// Convidado para quem o sorteio atual em [_challenges] foi feito. `null`
   /// enquanto o nome ainda não é conhecido ou o sorteio ainda não começou.
   String? _guestName;
@@ -592,6 +599,12 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     // próximo sorteio trazê-lo de volta da planilha.
     renameGuestChallengeDraw(oldName, newName);
     writeGuestName(newName);
+    // Antes do nosso próprio setState, de propósito: o portão precisa já
+    // estar mostrando o nome novo quando este widget reconstruir, senão o
+    // `build` acha que um convidado diferente apareceu (nome novo do
+    // portão != [_guestName] já atualizado) e sorteia os desafios de novo
+    // por engano.
+    _gateKey.currentState?.updateGuestName(newName);
     setState(() {
       _guestName = newName;
       _renameFormOpen = false;
@@ -770,6 +783,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
           onExit: _previewMode ? _disablePreviewMode : null,
         ),
       GuestNameGate(
+        key: _gateKey,
         onPreviewModeRequested: _enablePreviewMode,
         builder: (context, guestName) {
           if (_guestName != guestName) {

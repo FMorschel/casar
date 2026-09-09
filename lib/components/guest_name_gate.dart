@@ -86,6 +86,22 @@ class GuestNameGateState extends State<GuestNameGate> {
     setState(() => guestName = name);
   }
 
+  /// Atualiza o nome do convidado já aceito, sem voltar ao portão.
+  ///
+  /// Chamado de fora (via [GlobalStateKey], ver
+  /// `PhotoChallengesFlowState._renameGuest`) quando o convidado corrige o
+  /// nome depois de já ter passado pelo portão. [name] já deve estar salvo
+  /// no `localStorage` pelo chamador — esta função só atualiza o que o
+  /// [builder] enxerga, para o nome novo aparecer sem um sorteio novo: sem
+  /// isso, o portão continuaria mostrando o nome antigo e a página de
+  /// desafios veria um "nome mudou" na próxima build, tratando como se um
+  /// convidado diferente tivesse aparecido e sorteando os desafios dele de
+  /// novo.
+  void updateGuestName(String name) {
+    if (guestName == name) return;
+    setState(() => guestName = name);
+  }
+
   /// Checa na planilha se [normalized] já tem desafios sorteados (FR-8)
   /// antes de assumir esse nome — pode ser outra pessoa com o mesmo nome.
   Future<void> _submit() async {

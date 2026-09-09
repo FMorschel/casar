@@ -645,7 +645,13 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
 
   @override
   Component build(BuildContext context) {
-    return Component.fragment([
+    // Um elemento só na raiz, e não um `Component.fragment`: este é um
+    // componente `@client`, e no site publicado o servidor entrega a ilha
+    // vazia — todo o conteúdo entra na hidratação. Com vários nós na raiz
+    // (ainda por cima em número variável, já que o painel é condicional) a
+    // hidratação ancorava errado e enfiava a ilha inteira antes do
+    // cabeçalho, que ia parar no fim da página.
+    return div(classes: 'photo-challenges-body', [
       // Fora do [GuestNameGate] de propósito: o painel precisa alcançar
       // também as etapas em que o portão (ou a animação de sorteio) ainda
       // está na frente — é lá que "apagar meu nome" costuma fazer falta.

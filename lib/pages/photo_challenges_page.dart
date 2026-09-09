@@ -614,6 +614,12 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       'Nome corrigido para "$newName"!',
       autoDismiss: const Duration(seconds: 4),
     );
+
+    // O álbum já carregado guarda o nome de autor de quando foi buscado —
+    // ele não se atualiza sozinho só porque a planilha mudou. Busca de novo
+    // para as fotos deste convidado aparecerem com o nome corrigido sem
+    // esperar a próxima atualização manual (FR-16).
+    unawaited(_refreshGallery());
   }
 
   void _appendLocalGalleryPhoto(GalleryPhoto photo) {

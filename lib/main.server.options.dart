@@ -16,6 +16,7 @@ import 'package:casar/components/loading_indicator.dart' as _loading_indicator;
 import 'package:casar/components/navbar.dart' as _navbar;
 import 'package:casar/components/photo_capture.dart' as _photo_capture;
 import 'package:casar/components/photo_gallery.dart' as _photo_gallery;
+import 'package:casar/components/preview_panel.dart' as _preview_panel;
 import 'package:casar/components/theme_toggle.dart' as _theme_toggle;
 import 'package:casar/components/toast.dart' as _toast;
 import 'package:casar/pages/photo_challenges_page.dart'
@@ -62,6 +63,7 @@ ServerOptions get defaultServerOptions => ServerOptions(
     ..._navbar.Navbar.styles,
     ..._photo_capture.PhotoCaptureState.styles,
     ..._photo_gallery.PhotoGalleryState.styles,
+    ..._preview_panel.PreviewPanelState.styles,
     ..._theme_toggle.ThemeToggleState.styles,
     ..._toast.Toast.styles,
     ..._toast.ToastStack.styles,

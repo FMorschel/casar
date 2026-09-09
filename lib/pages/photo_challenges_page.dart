@@ -10,6 +10,7 @@ import '../components/guest_name_gate.dart';
 import '../components/loading_indicator.dart';
 import '../components/photo_capture.dart';
 import '../components/photo_gallery.dart';
+import '../components/preview_panel.dart';
 import '../components/theme_toggle.dart';
 import '../components/toast.dart';
 import '../constants/photo_challenges.dart';
@@ -214,7 +215,9 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   /// a construção da árvore.
   void _startFor(String guestName) {
     if (_guestName == guestName || _disposed) return;
-    _guestName = guestName;
+    // Com `setState` para o painel de prévia, que é irmão do portão do nome,
+    // enxergar o nome novo sem esperar o sorteio voltar da planilha.
+    setState(() => _guestName = guestName);
     _init(guestName);
   }
 
@@ -433,14 +436,28 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     });
   }
 
-  /// Só em modo de desenvolvimento (FR — atalho de teste manual): apaga o
-  /// nome do convidado e o sorteio salvos neste navegador e recarrega a
-  /// página, para poder testar o fluxo do zero sem editar a planilha.
-  void _resetDevData(String guestName) {
+  /// Esquece o nome salvo e recarrega, caindo de volta no portão do nome.
+  ///
+  /// Recarregar (em vez de mexer no estado em memória) é de propósito: o
+  /// sorteio, a galeria e a câmera pendurados no nome antigo somem junto,
+  /// sem chance de sobrar um pedaço da sessão anterior na tela.
+  void _forgetGuestName() {
     if (!kIsWeb) return;
     web.window.localStorage.removeItem(guestNameStorageKey);
-    removeGuestChallengeDraw(guestName);
     web.window.location.reload();
+  }
+
+  /// Como [_forgetGuestName], mas apaga também o sorteio guardado para esse
+  /// nome — recomeço do zero, sem recuperar os desafios ao redigitá-lo.
+  ///
+  /// Não mexe na planilha: um nome que já sorteou lá volta com o mesmo
+  /// sorteio; para um sorteio realmente novo, use um nome novo.
+  void _forgetGuestData() {
+    if (!kIsWeb) return;
+    if (readGuestName() case final name?) {
+      removeGuestChallengeDraw(name);
+    }
+    _forgetGuestName();
   }
 
   void _appendLocalGalleryPhoto(GalleryPhoto photo) {
@@ -588,14 +605,28 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
 
   @override
   Component build(BuildContext context) {
-    return GuestNameGate(
-      builder: (context, guestName) {
-        if (_guestName != guestName) {
-          Future.microtask(() => _startFor(guestName));
-        }
-        return _buildFlow(guestName);
-      },
-    );
+    return Component.fragment([
+      // Fora do [GuestNameGate] de propósito: o painel precisa alcançar
+      // também as etapas em que o portão (ou a animação de sorteio) ainda
+      // está na frente — é lá que "apagar meu nome" costuma fazer falta.
+      if (kDebugMode)
+        PreviewPanel(
+          guestName: readGuestName(),
+          albumRevealed: _devForceReveal,
+          onChangeName: _forgetGuestName,
+          onForgetGuest: _forgetGuestData,
+          onToggleAlbum: () =>
+              setState(() => _devForceReveal = !_devForceReveal),
+        ),
+      GuestNameGate(
+        builder: (context, guestName) {
+          if (_guestName != guestName) {
+            Future.microtask(() => _startFor(guestName));
+          }
+          return _buildFlow(guestName);
+        },
+      ),
+    ]);
   }
 
   Component _buildFlow(String guestName) {
@@ -624,18 +655,6 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
 
     return div(classes: 'photo-challenges-flow', [
       h1(classes: 'section-title', [.text('Seus desafios, $guestName!')]),
-      if (kDebugMode)
-        button(
-          classes: 'photo-challenges-dev-reset',
-          onClick: () => _resetDevData(guestName),
-          [.text('[dev] Apagar meu nome e sorteio')],
-        ),
-      if (kDebugMode && !_devForceReveal)
-        button(
-          classes: 'photo-challenges-dev-reset',
-          onClick: () => setState(() => _devForceReveal = true),
-          [.text('[dev] A data chegou, revelar álbum')],
-        ),
       if (pending.isNotEmpty)
         div(classes: 'photo-challenges-list', [
           for (final challenge in pending)
@@ -921,15 +940,6 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
         backgroundColor: AppColors.bgSoft,
       ),
     ]),
-    css('.photo-challenges-dev-reset').styles(
-      padding: .symmetric(vertical: 6.px, horizontal: 12.px),
-      border: .all(style: .dashed, color: AppColors.textMuted, width: 1.px),
-      radius: .circular(AppRadius.md),
-      backgroundColor: AppColors.bg,
-      color: AppColors.textMuted,
-      fontSize: .875.rem,
-      cursor: .pointer,
-    ),
     css('.photo-challenge-check').styles(
       color: AppColors.accentStrong,
       fontWeight: .w700,

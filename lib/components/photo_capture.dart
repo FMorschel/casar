@@ -104,25 +104,53 @@ class PhotoCaptureState extends State<PhotoCapture> {
     _stream = null;
   }
 
+  /// Tira o instantâneo.
+  ///
+  /// Nunca sai em silêncio: toda saída sem foto vira uma mensagem na tela.
+  /// Um botão que não faz absolutamente nada ao ser tocado é
+  /// indistinguível de um botão quebrado, e era exatamente assim que o
+  /// `Capturar` se comportava no celular — sem nenhuma pista de qual das
+  /// saídas tinha sido tomada.
   void _capture() {
-    final video =
-        web.document.getElementById(_videoId) as web.HTMLVideoElement?;
-    final canvas =
-        web.document.getElementById(_canvasId) as web.HTMLCanvasElement?;
-    if (video == null || canvas == null) return;
+    try {
+      final video =
+          web.document.getElementById(_videoId) as web.HTMLVideoElement?;
+      final canvas =
+          web.document.getElementById(_canvasId) as web.HTMLCanvasElement?;
+      if (video == null || canvas == null) {
+        setState(() {
+          _error =
+              'Não achei a câmera nesta tela. Recarregue a página e tente '
+              'de novo.';
+        });
+        return;
+      }
 
-    final width = video.videoWidth;
-    final height = video.videoHeight;
-    if (width == 0 || height == 0) return;
-    canvas.width = width;
-    canvas.height = height;
+      final width = video.videoWidth;
+      final height = video.videoHeight;
+      if (width == 0 || height == 0) {
+        setState(() {
+          _error =
+              'A câmera ainda está abrindo. Espere um instante e toque em '
+              'Capturar de novo.';
+        });
+        return;
+      }
+      canvas.width = width;
+      canvas.height = height;
 
-    final ctx = canvas.getContext('2d') as web.CanvasRenderingContext2D;
-    ctx.drawImage(video, 0, 0);
-    final dataUrl = canvas.toDataURL('image/jpeg', 0.85.toJS);
+      final ctx = canvas.getContext('2d') as web.CanvasRenderingContext2D;
+      ctx.drawImage(video, 0, 0);
+      final dataUrl = canvas.toDataURL('image/jpeg', 0.85.toJS);
 
-    _stopCamera();
-    setState(() => _capturedDataUrl = dataUrl);
+      _stopCamera();
+      setState(() {
+        _capturedDataUrl = dataUrl;
+        _error = null;
+      });
+    } catch (error) {
+      setState(() => _error = 'Não deu para tirar a foto: $error');
+    }
   }
 
   void _retake() {
@@ -146,8 +174,6 @@ class PhotoCaptureState extends State<PhotoCapture> {
   Component build(BuildContext context) {
     final captured = _capturedDataUrl;
     return div(classes: 'photo-capture', [
-      if (_error case final error?)
-        p(classes: 'photo-capture-error', [.text(error)]),
       div(classes: 'photo-capture-stage', [
         video(
           [],
@@ -181,6 +207,8 @@ class PhotoCaptureState extends State<PhotoCapture> {
           children: const [],
         ),
       ]),
+      if (_error case final error?)
+        p(classes: 'photo-capture-error', [.text(error)]),
       // Nenhum botão fica por cima do vídeo: no Android a camada de vídeo
       // costuma ser promovida para uma superfície do próprio sistema, que
       // pinta acima do HTML e engole o toque de quem estiver em cima dela.

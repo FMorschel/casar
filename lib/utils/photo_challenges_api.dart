@@ -20,10 +20,11 @@ class PhotoChallengesApi {
   ///
   /// Usado antes de assumir um nome (FR-2/FR-3): se já existe sorteio para
   /// esse nome, quem está digitando pode não ser a mesma pessoa que
-  /// sorteou da primeira vez. Devolve lista vazia quando o nome ainda não
-  /// tem sorteio, e `null` quando a chamada falha (o chamador trata como
-  /// "não deu pra checar" e segue em frente, para não travar o convidado).
-  Future<List<PhotoChallenge>?> checkExisting(String guestName) async {
+  /// sorteou da primeira vez. Devolve lista vazia (com [DrawnChallenges.guestId]
+  /// vazio) quando o nome ainda não tem sorteio, e `null` quando a chamada
+  /// falha (o chamador trata como "não deu pra checar" e segue em frente,
+  /// para não travar o convidado).
+  Future<DrawnChallenges?> checkExisting(String guestName) async {
     if (!isEnabled) return null;
     try {
       final response = await http
@@ -35,7 +36,7 @@ class PhotoChallengesApi {
           .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return null;
 
-      return _parseDraw(response.body).$1?.challenges;
+      return _parseDraw(response.body).$1;
     } catch (_) {
       return null;
     }
@@ -43,22 +44,36 @@ class PhotoChallengesApi {
 
   /// Sorteia (ou recupera) os desafios de [guestName].
   ///
-  /// Idempotente por convidado (FR-8): chamar de novo para o mesmo nome
-  /// devolve tudo que ele já tem — todos os sorteios, não só o último, mais
-  /// os desafios que ele mesmo escreveu — em vez de sortear outra vez.
-  /// Devolve `null` quando a chamada falha, para o chamador cair no sorteio
-  /// local (FR-9) em vez de travar o convidado sem desafios.
+  /// [guestId] é o id salvo deste convidado (ver [GuestChallengeDraw] /
+  /// `guest_name.dart`), quando este navegador já tem um — é o que deixa o
+  /// servidor reconhecer o convidado mesmo que o nome dele tenha sido
+  /// corrigido em outro aparelho desde então. Sem id (primeira vez), o
+  /// servidor casa pelo nome e cria o convidado se for a primeira vez dele
+  /// em qualquer aparelho.
+  ///
+  /// Idempotente por convidado (FR-8): chamar de novo para o mesmo
+  /// convidado devolve tudo que ele já tem — todos os sorteios, não só o
+  /// último, mais os desafios que ele mesmo escreveu — em vez de sortear
+  /// outra vez. Devolve `null` quando a chamada falha, para o chamador cair
+  /// no sorteio local (FR-9) em vez de travar o convidado sem desafios.
   ///
   /// `confirmedPhotos` traz a URL de quem já confirmou a foto de algum
   /// desses desafios antes (ex.: o convidado abrindo em outro aparelho, sem
   /// o `localStorage` de quando confirmou) — chave é o texto do desafio.
-  Future<DrawnChallenges?> drawChallenges(String guestName) async {
-    final (drawn, _) = await _postDraw({'action': 'draw', 'name': guestName});
+  Future<DrawnChallenges?> drawChallenges(
+    String guestName, {
+    String? guestId,
+  }) async {
+    final (drawn, _) = await _postDraw({
+      'action': 'draw',
+      'name': guestName,
+      if (guestId != null) 'id': guestId,
+    });
     return drawn;
   }
 
-  /// Sorteia mais um trio para [guestName], depois que ele mandou as fotos de
-  /// todos os desafios que já tinha.
+  /// Sorteia mais um trio para o convidado de [guestId]/[guestName], depois
+  /// que ele mandou as fotos de todos os desafios que já tinha.
   ///
   /// Devolve a lista completa dele (a de antes mais o sorteio novo), igual a
   /// [drawChallenges]. Quando o banco de frases acaba, o servidor responde
@@ -69,8 +84,15 @@ class PhotoChallengesApi {
   /// vindo do `error` que o Apps Script devolve, ou a exceção de rede/timeout
   /// como string) — só para mostrar ao convidado no toast de erro, não para
   /// decisão de fluxo.
-  Future<(DrawnChallenges?, String?)> drawMore(String guestName) async {
-    return _postDraw({'action': 'drawMore', 'name': guestName});
+  Future<(DrawnChallenges?, String?)> drawMore(
+    String guestName, {
+    String? guestId,
+  }) async {
+    return _postDraw({
+      'action': 'drawMore',
+      'name': guestName,
+      if (guestId != null) 'id': guestId,
+    });
   }
 
   Future<(DrawnChallenges?, String?)> _postDraw(
@@ -109,6 +131,8 @@ class PhotoChallengesApi {
     final photos = body['photos'];
     return (
       DrawnChallenges(
+        guestId: '${body['id'] ?? ''}',
+        guestName: '${body['name'] ?? ''}',
         challenges: [
           for (final text in body['challenges'] as List)
             resolvePhotoChallenge('$text'),
@@ -135,6 +159,7 @@ class PhotoChallengesApi {
   /// momento do envio.
   Future<String?> uploadPhoto({
     required String guestName,
+    String? guestId,
     required PhotoChallenge challenge,
     required String photoDataUrl,
     required DateTime takenAt,
@@ -154,6 +179,7 @@ class PhotoChallengesApi {
             body: jsonEncode({
               'action': 'upload',
               'name': guestName,
+              if (guestId != null) 'id': guestId,
               'challenge': challenge.text,
               'custom': challenge.isCustom,
               'photo': base64Data,
@@ -169,6 +195,46 @@ class PhotoChallengesApi {
       return '${body['url']}';
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Corrige o nome do convidado de [guestId] (FR de renomear): quem
+  /// escreveu o nome errado da primeira vez pode consertá-lo depois — vale
+  /// para todas as fotos já enviadas por ele, já que a planilha guarda o
+  /// desafio/foto pelo id, não pelo nome (ver tools/apps_script/Code.gs).
+  ///
+  /// Devolve o nome já normalizado pelo servidor quando dá certo, ou o
+  /// motivo do erro (`name_too_short`, `name_taken`, `unknown_guest`, ou a
+  /// exceção de rede/timeout como string) caso contrário.
+  Future<(String?, String?)> renameGuest({
+    required String guestId,
+    required String newName,
+  }) async {
+    if (!isEnabled) return (null, 'endpoint_disabled');
+    try {
+      final response = await http
+          .post(
+            Uri.parse(photoChallengesEndpoint),
+            headers: const {'Content-Type': 'text/plain;charset=UTF-8'},
+            body: jsonEncode({
+              'action': 'rename',
+              'id': guestId,
+              'name': newName,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        return (null, 'http_${response.statusCode}');
+      }
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['ok'] != true) {
+        final error = body is Map ? body['error'] : null;
+        return (null, error != null ? '$error' : 'invalid_response');
+      }
+      return ('${body['name']}', null);
+    } catch (err) {
+      return (null, '$err');
     }
   }
 

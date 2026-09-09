@@ -8,6 +8,15 @@ import 'package:universal_web/web.dart' as web;
 /// Chave usada no `localStorage` para guardar o nome do convidado.
 const guestNameStorageKey = 'casar-guest-name';
 
+/// Chave usada no `localStorage` para guardar o id do convidado na
+/// planilha (aba `convidados`) — o que o site manda de volta ao servidor
+/// para se identificar sem depender só do nome, e o que permite corrigir o
+/// nome depois (FR de renomear, ver [PhotoChallengesApi.renameGuest]).
+///
+/// Só existe depois do primeiro sorteio: antes disso o servidor ainda não
+/// tinha criado o convidado.
+const guestIdStorageKey = 'casar-guest-id';
+
 /// Lê o nome do convidado salvo neste navegador.
 ///
 /// `null` na primeira visita, ou fora da web (SSR/estático).
@@ -23,6 +32,25 @@ String? readGuestName() {
 void writeGuestName(String name) {
   if (!kIsWeb) return;
   web.window.localStorage.setItem(guestNameStorageKey, name);
+}
+
+/// Lê o id do convidado salvo neste navegador, se houver.
+String? readGuestId() {
+  if (!kIsWeb) return null;
+  final stored = web.window.localStorage.getItem(guestIdStorageKey);
+  return (stored == null || stored.isEmpty) ? null : stored;
+}
+
+/// Salva o id do convidado devolvido pelo servidor.
+void writeGuestId(String id) {
+  if (!kIsWeb) return;
+  web.window.localStorage.setItem(guestIdStorageKey, id);
+}
+
+/// Apaga o id do convidado salvo neste navegador.
+void removeGuestId() {
+  if (!kIsWeb) return;
+  web.window.localStorage.removeItem(guestIdStorageKey);
 }
 
 /// Normaliza o nome do convidado: corta espaços nas pontas, colapsa

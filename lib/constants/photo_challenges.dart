@@ -235,6 +235,16 @@ class GalleryPhoto {
 /// desafios chegam do servidor, sem depender do `localStorage` deste
 /// aparelho (ex.: convidado abrindo em outro aparelho).
 class DrawnChallenges {
+  /// Id do convidado na planilha (aba `convidados`) — é o que o site guarda
+  /// para se identificar daqui pra frente e para corrigir o nome depois
+  /// (ver [PhotoChallengesApi.renameGuest]).
+  final String guestId;
+
+  /// Nome do convidado como está na planilha agora. Pode não ser o nome que
+  /// este navegador tem salvo, se o convidado corrigiu o nome em outro
+  /// aparelho — quem chama deve atualizar o nome salvo com este.
+  final String guestName;
+
   /// Os desafios sorteados (ou recuperados) para o convidado.
   final List<PhotoChallenge> challenges;
 
@@ -242,6 +252,8 @@ class DrawnChallenges {
   final Map<String, String> confirmedPhotos;
 
   const DrawnChallenges({
+    required this.guestId,
+    required this.guestName,
     required this.challenges,
     required this.confirmedPhotos,
   });

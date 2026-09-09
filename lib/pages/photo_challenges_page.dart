@@ -108,6 +108,18 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   /// enquanto o nome ainda não é conhecido ou o sorteio ainda não começou.
   String? _guestName;
 
+  /// Id do convidado na planilha (aba `convidados`), devolvido pelo
+  /// servidor no primeiro sorteio. `null` até lá, ou em modo local
+  /// (endpoint desligado) — corrigir o nome (ver [_renameGuest]) só é
+  /// possível com o endpoint ligado e o id conhecido.
+  String? _guestId;
+
+  /// Correção de nome (FR de renomear) em andamento.
+  bool _renamingGuest = false;
+  bool _renameFormOpen = false;
+  String _renameInput = '';
+  String? _renameError;
+
   /// Todos os desafios do convidado: os de cada sorteio mais os que ele
   /// mesmo escreveu, na ordem em que apareceram. Os que ainda não têm foto
   /// em [_confirmedPhotos] são os pendentes, e são só esses que ficam na
@@ -247,10 +259,15 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     List<PhotoChallenge>? drawn;
     Map<String, String>? remoteConfirmedPhotos;
     if (_api.isEnabled) {
-      final remote = await _api.drawChallenges(guestName);
+      final remote = await _api.drawChallenges(
+        guestName,
+        guestId: readGuestId(),
+      );
       if (remote != null) {
         drawn = remote.challenges;
         remoteConfirmedPhotos = remote.confirmedPhotos;
+        if (remote.guestId.isNotEmpty) writeGuestId(remote.guestId);
+        if (!_disposed) setState(() => _guestId = remote.guestId);
       }
     }
     drawn ??= stored?.challenges ?? _localDraw(const []);
@@ -365,7 +382,10 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     Map<String, String>? photos;
     String? error;
     if (_api.isEnabled) {
-      final (remote, drawError) = await _api.drawMore(guestName);
+      final (remote, drawError) = await _api.drawMore(
+        guestName,
+        guestId: _guestId,
+      );
       if (remote != null) {
         updated = remote.challenges;
         photos = remote.confirmedPhotos;
@@ -461,9 +481,15 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   /// Recarregar (em vez de mexer no estado em memória) é de propósito: o
   /// sorteio, a galeria e a câmera pendurados no nome antigo somem junto,
   /// sem chance de sobrar um pedaço da sessão anterior na tela.
+  ///
+  /// Também apaga o id do convidado: sem isso, o id do nome esquecido
+  /// hijackaria a identidade de outro convidado se este navegador digitasse
+  /// um nome diferente depois — o servidor casa pelo `id` antes do nome
+  /// (ver `resolveGuest_` em tools/apps_script/Code.gs).
   void _forgetGuestName() {
     if (!kIsWeb) return;
     web.window.localStorage.removeItem(guestNameStorageKey);
+    removeGuestId();
     web.window.location.reload();
   }
 
@@ -498,6 +524,83 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       _previewMode = false;
       _devForceReveal = false;
     });
+  }
+
+  /// Abre (ou fecha) o campo de corrigir o nome, pré-preenchido com o nome
+  /// atual — é mais fácil ajustar um erro de digitação do que redigitar do
+  /// zero.
+  void _toggleRenameForm() {
+    setState(() {
+      _renameFormOpen = !_renameFormOpen;
+      _renameInput = _renameFormOpen ? (_guestName ?? '') : '';
+      _renameError = null;
+    });
+  }
+
+  /// Corrige o nome do convidado (FR de renomear): a planilha guarda as
+  /// fotos pelo `guest_id`, não pelo nome, então isso vale para todo o
+  /// histórico já enviado sem precisar tocar em nenhuma linha de foto — só
+  /// o [_guestId] muda de nome (ver tools/apps_script/Code.gs).
+  Future<void> _renameGuest() async {
+    final oldName = _guestName;
+    final guestId = _guestId;
+    if (oldName == null || _renamingGuest) return;
+    if (guestId == null) {
+      // Sem endpoint ligado (ou antes do primeiro sorteio voltar) não há
+      // convidado na planilha para corrigir ainda.
+      setState(
+        () => _renameError =
+            'Ainda não deu para confirmar seu cadastro. Tente de novo em '
+            'instantes.',
+      );
+      return;
+    }
+
+    final normalized = normalizeGuestName(_renameInput);
+    if (!isGuestNameLongEnough(normalized)) {
+      setState(() => _renameError = 'Digite um nome válido.');
+      return;
+    }
+    if (normalized == oldName) {
+      setState(() => _renameFormOpen = false);
+      return;
+    }
+
+    setState(() {
+      _renamingGuest = true;
+      _renameError = null;
+    });
+    final (newName, error) = await _api.renameGuest(
+      guestId: guestId,
+      newName: normalized,
+    );
+    if (_disposed) return;
+    setState(() => _renamingGuest = false);
+
+    if (newName == null) {
+      setState(
+        () => _renameError = switch (error) {
+          'name_taken' => 'Esse nome já está sendo usado por outro convidado.',
+          _ => 'Não deu para corrigir agora. Tente de novo em instantes.',
+        },
+      );
+      return;
+    }
+
+    // O sorteio salvo neste navegador mora sob a chave do nome antigo (ver
+    // `guest_challenge_draw.dart`) — sem mover, ele sumiria daqui até o
+    // próximo sorteio trazê-lo de volta da planilha.
+    renameGuestChallengeDraw(oldName, newName);
+    writeGuestName(newName);
+    setState(() {
+      _guestName = newName;
+      _renameFormOpen = false;
+      _renameInput = '';
+    });
+    _showToast(
+      'Nome corrigido para "$newName"!',
+      autoDismiss: const Duration(seconds: 4),
+    );
   }
 
   void _appendLocalGalleryPhoto(GalleryPhoto photo) {
@@ -609,6 +712,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       );
       remoteUrl = await _api.uploadPhoto(
         guestName: guestName,
+        guestId: _guestId,
         challenge: challenge,
         photoDataUrl: dataUrl,
         takenAt: takenAt,
@@ -702,7 +806,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     final selected = _selectedChallenge(pending);
 
     return div(classes: 'photo-challenges-flow', [
-      h1(classes: 'section-title', [.text('Seus desafios, $guestName!')]),
+      _buildNameHeader(guestName),
       if (pending.isNotEmpty)
         div(classes: 'photo-challenges-list', [
           for (final challenge in pending)
@@ -777,6 +881,61 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
               ),
           ],
         ),
+    ]);
+  }
+
+  /// Título com o nome do convidado e o atalho para corrigi-lo (FR de
+  /// renomear), para quem escreveu algo errado no portão não ficar preso a
+  /// isso pelo resto da festa.
+  Component _buildNameHeader(String guestName) {
+    return div(classes: 'photo-challenges-name-header', [
+      h1(classes: 'section-title', [.text('Seus desafios, $guestName!')]),
+      if (!_renameFormOpen)
+        button(
+          classes: 'photo-challenges-rename-toggle',
+          attributes: const {'type': 'button'},
+          onClick: _toggleRenameForm,
+          [.text('É "$guestName" mesmo? Corrigir nome')],
+        ),
+      if (_renameFormOpen) _buildRenameForm(),
+    ]);
+  }
+
+  Component _buildRenameForm() {
+    return div(classes: 'photo-challenges-rename', [
+      input<String>(
+        type: InputType.text,
+        value: _renameInput,
+        attributes: {'placeholder': 'Seu nome, do jeito certo'},
+        onInput: (value) => setState(() {
+          _renameInput = value;
+          _renameError = null;
+        }),
+        events: {
+          'keydown': (event) {
+            if ((event as web.KeyboardEvent).key == 'Enter') _renameGuest();
+          },
+        },
+      ),
+      if (_renameError case final error?)
+        p(classes: 'photo-challenges-rename-error', [.text(error)]),
+      div(classes: 'photo-challenges-rename-actions', [
+        button(
+          classes: 'photo-challenges-action',
+          attributes: {
+            'type': 'button',
+            if (_renamingGuest) 'disabled': '',
+          },
+          onClick: _renameGuest,
+          [.text(_renamingGuest ? 'Salvando…' : 'Salvar nome')],
+        ),
+        button(
+          classes: 'photo-challenges-action secondary',
+          attributes: const {'type': 'button'},
+          onClick: _toggleRenameForm,
+          [.text('Cancelar')],
+        ),
+      ]),
     ]);
   }
 
@@ -963,6 +1122,58 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       textAlign: .center,
       fontSize: 2.rem,
       color: AppColors.accentStrong,
+      margin: .zero,
+    ),
+    css('.photo-challenges-name-header').styles(
+      display: .flex,
+      flexDirection: .column,
+      alignItems: .center,
+      gap: .all(6.px),
+    ),
+    css('.photo-challenges-rename-toggle', [
+      css('&').styles(
+        padding: .zero,
+        border: .unset,
+        backgroundColor: Colors.transparent,
+        color: AppColors.textMuted,
+        fontSize: .8125.rem,
+        textDecoration: TextDecoration(line: TextDecorationLine.underline),
+        cursor: .pointer,
+      ),
+      css('&:hover').styles(color: AppColors.accentStrong),
+    ]),
+    css('.photo-challenges-rename', [
+      css('&').styles(
+        display: .flex,
+        flexDirection: .column,
+        alignItems: .center,
+        gap: .all(8.px),
+        width: 100.percent,
+        maxWidth: 360.px,
+        padding: .all(16.px),
+        backgroundColor: AppColors.bgElevated,
+        border: .all(style: .solid, color: AppColors.border, width: 1.px),
+        radius: .circular(AppRadius.md),
+      ),
+      css('input').styles(
+        width: 100.percent,
+        padding: .symmetric(vertical: 10.px, horizontal: 14.px),
+        border: .all(style: .solid, color: AppColors.border, width: 1.px),
+        radius: .circular(AppRadius.md),
+        backgroundColor: AppColors.bg,
+        color: AppColors.text,
+        fontFamily: AppFonts.body,
+      ),
+    ]),
+    css('.photo-challenges-rename-error').styles(
+      margin: .zero,
+      color: AppColors.accentStrong,
+      fontSize: .8125.rem,
+      fontWeight: .w600,
+    ),
+    css('.photo-challenges-rename-actions').styles(
+      display: .flex,
+      gap: .all(8.px),
     ),
     css('.photo-challenges-list').styles(
       display: .flex,

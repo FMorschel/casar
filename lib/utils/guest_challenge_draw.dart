@@ -84,3 +84,15 @@ void removeGuestChallengeDraw(String guestName) {
   if (!kIsWeb) return;
   web.window.localStorage.removeItem(_storageKeyFor(guestName));
 }
+
+/// Move o sorteio guardado da chave de [oldName] para a de [newName],
+/// depois que o convidado corrige o nome (a chave é o nome, não o id) —
+/// sem isso, corrigir o nome faria o sorteio salvo parecer ter sumido
+/// deste navegador até o próximo `draw` trazê-lo de volta da planilha.
+void renameGuestChallengeDraw(String oldName, String newName) {
+  if (!kIsWeb || oldName == newName) return;
+  final raw = web.window.localStorage.getItem(_storageKeyFor(oldName));
+  if (raw == null) return;
+  web.window.localStorage.setItem(_storageKeyFor(newName), raw);
+  web.window.localStorage.removeItem(_storageKeyFor(oldName));
+}

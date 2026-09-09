@@ -39,7 +39,11 @@ enum _ExpandPhase {
 /// `@client` já existente ([PhotoChallengesFlow]), então pode ter estado
 /// próprio (o card em tela cheia) sem precisar de tipos serializáveis.
 class PhotoGallery extends StatefulComponent {
-  const PhotoGallery({required this.photos, this.forceRevealed = false, super.key});
+  const PhotoGallery({
+    required this.photos,
+    this.forceRevealed = false,
+    super.key,
+  });
 
   final List<GalleryPhoto> photos;
 
@@ -161,9 +165,10 @@ class PhotoGalleryState extends State<PhotoGallery> {
   Component build(BuildContext context) {
     final revealed =
         component.forceRevealed || DateTime.now().isAfter(photoRevealDate);
-    final photos = [...component.photos]..sort(
-      (p1, p2) => p2.takenAt.compareTo(p1.takenAt),
-    );
+    final photos = [...component.photos]
+      ..sort(
+        (p1, p2) => p2.takenAt.compareTo(p1.takenAt),
+      );
 
     return div(classes: 'photo-gallery', [
       h2(classes: 'section-title', [.text('Álbum dos Desafios')]),

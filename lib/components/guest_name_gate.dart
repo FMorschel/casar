@@ -63,6 +63,7 @@ class GuestNameGateState extends State<GuestNameGate> {
   String nameInput = '';
   _GateStep _step = _GateStep.input;
   String? _pendingName;
+  String? _pendingGuestId;
   List<PhotoChallenge> _existingChallenges = const [];
 
   bool _disposed = false;
@@ -104,7 +105,7 @@ class GuestNameGateState extends State<GuestNameGate> {
     final existing = await _api.checkExisting(normalized);
     if (_disposed) return;
 
-    if (existing == null || existing.isEmpty) {
+    if (existing == null || existing.challenges.isEmpty) {
       // Sem sorteio prévio (ou não deu pra checar): segue direto, para não
       // travar o convidado por causa de uma falha de rede.
       _acceptName(normalized);
@@ -113,7 +114,8 @@ class GuestNameGateState extends State<GuestNameGate> {
 
     setState(() {
       _pendingName = normalized;
-      _existingChallenges = existing;
+      _pendingGuestId = existing.guestId.isEmpty ? null : existing.guestId;
+      _existingChallenges = existing.challenges;
       _step = _GateStep.confirm;
     });
   }
@@ -121,6 +123,7 @@ class GuestNameGateState extends State<GuestNameGate> {
   void _confirmSamePerson() {
     final name = _pendingName;
     if (name == null) return;
+    if (_pendingGuestId case final id?) writeGuestId(id);
     // O sorteio já existia (é por isso que estamos aqui): marcar como
     // revelado neste navegador também, para a página de desafios não repetir
     // a animação de sorteio de um resultado que o convidado já viu antes.
@@ -142,6 +145,7 @@ class GuestNameGateState extends State<GuestNameGate> {
       _step = _GateStep.input;
       nameInput = '';
       _pendingName = null;
+      _pendingGuestId = null;
       _existingChallenges = const [];
     });
   }

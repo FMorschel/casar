@@ -228,11 +228,18 @@ class PhotoCaptureState extends State<PhotoCapture> {
         textAlign: .center,
       ),
       css('.photo-capture-stage', [
+        // A altura é limitada de propósito: a câmera de um celular devolve
+        // um vídeo em pé, e sem teto ele empurraria os botões de capturar e
+        // confirmar para muito abaixo da dobra.
         css('&').styles(
           position: const Position.relative(),
+          display: .flex,
+          alignItems: .center,
+          justifyContent: .center,
           width: 100.percent,
           maxWidth: 420.px,
           minHeight: 240.px,
+          maxHeight: 50.vh,
           radius: .circular(AppRadius.md),
           overflow: .hidden,
           backgroundColor: AppColors.bgSoft,
@@ -240,7 +247,9 @@ class PhotoCaptureState extends State<PhotoCapture> {
         css('video, .photo-capture-preview').styles(
           width: 100.percent,
           height: Unit.expression('auto'),
+          maxHeight: 50.vh,
           display: .block,
+          raw: const {'object-fit': 'contain'},
         ),
         css('.photo-capture-permission').styles(
           position: const Position.absolute(top: Unit.zero, left: Unit.zero),
@@ -263,8 +272,15 @@ class PhotoCaptureState extends State<PhotoCapture> {
           cursor: .pointer,
         ),
       ]),
+      // Grudados no rodapé da tela enquanto o capturador estiver visível:
+      // mesmo com o vídeo ocupando meia tela, capturar e confirmar ficam
+      // sempre ao alcance do polegar, sem precisar rolar até achá-los.
       css('.photo-capture-actions').styles(
+        position: .sticky(bottom: 16.px),
+        zIndex: ZIndex(1),
         display: .flex,
+        flexWrap: .wrap,
+        justifyContent: .center,
         gap: .all(12.px),
       ),
       css('.photo-capture-actions button', [

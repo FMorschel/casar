@@ -5,6 +5,7 @@ import 'package:jaspr/jaspr.dart';
 import 'package:universal_web/web.dart' as web;
 
 import '../components/challenge_reveal.dart';
+import '../components/gallery_refresh_button.dart';
 import '../components/guest_name_gate.dart';
 import '../components/loading_indicator.dart';
 import '../components/photo_capture.dart';
@@ -829,24 +830,10 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       else if (_galleryPhotos case final photos?)
         PhotoGallery(photos: photos, forceRevealed: _devForceReveal),
       if (_api.isEnabled)
-        button(
-          classes: [
-            'photo-gallery-refresh',
-            if (_galleryRefreshing) 'is-refreshing',
-            if (_galleryRefreshFailed) 'has-failed',
-          ].join(' '),
-          attributes: {
-            'type': 'button',
-            'aria-label': 'Atualizar o álbum de fotos',
-            'title': _galleryRefreshFailed
-                ? 'Não deu para atualizar agora. Tente de novo.'
-                : 'Ver as fotos que os outros convidados mandaram',
-            if (_galleryRefreshing) 'disabled': '',
-          },
-          onClick: _manualRefreshGallery,
-          [
-            span(classes: 'photo-gallery-refresh-icon', [.text('↻')]),
-          ],
+        GalleryRefreshButton(
+          onRefresh: _manualRefreshGallery,
+          refreshing: _galleryRefreshing,
+          failed: _galleryRefreshFailed,
         ),
       if (_toasts.isNotEmpty)
         ToastStack(
@@ -1342,48 +1329,5 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       width: 100.percent,
       maxWidth: 480.px,
     ),
-    // Fica fixo na tela: o convidado pode buscar as fotos novas de onde
-    // estiver na página, sem voltar até o topo do álbum.
-    css('.photo-gallery-refresh', [
-      css('&').styles(
-        position: .fixed(bottom: 24.px, right: 24.px),
-        zIndex: ZIndex(20),
-        display: .flex,
-        alignItems: .center,
-        justifyContent: .center,
-        width: 48.px,
-        height: 48.px,
-        padding: .zero,
-        border: .all(style: .solid, color: AppColors.border, width: 1.px),
-        radius: .circular(24.px),
-        backgroundColor: AppColors.bgElevated,
-        color: AppColors.accentStrong,
-        fontSize: 22.px,
-        cursor: .pointer,
-        shadow: BoxShadow(
-          offsetX: .zero,
-          offsetY: 4.px,
-          blur: 16.px,
-          color: AppColors.shadow,
-        ),
-        transition: Transition('transform', duration: 150.ms),
-      ),
-      css('&:hover').styles(transform: .scale(1.08)),
-      css('&:disabled').styles(cursor: .progress),
-      css('&.has-failed').styles(color: AppColors.textMuted),
-      css('&.is-refreshing .photo-gallery-refresh-icon').styles(
-        animation: const Animation(
-          name: 'photo-gallery-refresh-spin',
-          duration: Duration(milliseconds: 900),
-          curve: .linear,
-          count: 9999,
-        ),
-      ),
-    ]),
-    css('.photo-gallery-refresh-icon').styles(display: .block),
-    css.keyframes('photo-gallery-refresh-spin', {
-      'from': Styles(transform: .rotate(0.deg)),
-      'to': Styles(transform: .rotate(360.deg)),
-    }),
   ];
 }

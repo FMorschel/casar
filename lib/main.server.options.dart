@@ -9,6 +9,8 @@ import 'package:casar/components/challenge_reveal.dart' as _challenge_reveal;
 import 'package:casar/components/countdown.dart' as _countdown;
 import 'package:casar/components/couple_section.dart' as _couple_section;
 import 'package:casar/components/footer.dart' as _footer;
+import 'package:casar/components/gallery_refresh_button.dart'
+    as _gallery_refresh_button;
 import 'package:casar/components/gift_list.dart' as _gift_list;
 import 'package:casar/components/guest_name_gate.dart' as _guest_name_gate;
 import 'package:casar/components/hero.dart' as _hero;
@@ -56,6 +58,7 @@ ServerOptions get defaultServerOptions => ServerOptions(
     ..._countdown.CountdownState.styles,
     ..._couple_section.CoupleSection.styles,
     ..._footer.Footer.styles,
+    ..._gallery_refresh_button.GalleryRefreshButton.styles,
     ..._gift_list.GiftListState.styles,
     ..._guest_name_gate.GuestNameGateState.styles,
     ..._hero.Hero.styles,

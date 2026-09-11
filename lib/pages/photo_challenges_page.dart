@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
@@ -19,13 +18,9 @@ import '../utils/challenge_draw.dart';
 import '../utils/custom_challenge.dart';
 import '../utils/guest_challenge_draw.dart';
 import '../utils/guest_name.dart';
+import '../utils/local_gallery.dart';
 import '../utils/photo_challenges_api.dart';
 import '../utils/preview_mode.dart';
-
-/// Galeria local de apoio, usada quando o Apps Script não está configurado
-/// (FR-15, FR-16 em modo degradado): guarda as fotos confirmadas por
-/// qualquer convidado *neste navegador*.
-const _localGalleryStorageKey = 'casar-photo-gallery-local';
 
 /// Página de `/fotos`: pede o nome do convidado, sorteia 3 desafios com uma
 /// animação, guia a captura de uma foto por desafio e mostra o álbum
@@ -622,43 +617,6 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     unawaited(_refreshGallery());
   }
 
-  void _appendLocalGalleryPhoto(GalleryPhoto photo) {
-    if (!kIsWeb) return;
-    final raw = web.window.localStorage.getItem(_localGalleryStorageKey);
-    final list = raw == null || raw.isEmpty
-        ? <dynamic>[]
-        : jsonDecode(raw) as List;
-    list.add({
-      'challenge': photo.challengeText,
-      'author': photo.authorName,
-      'url': photo.photoUrl,
-      'timestamp': photo.takenAt.toIso8601String(),
-    });
-    web.window.localStorage.setItem(_localGalleryStorageKey, jsonEncode(list));
-  }
-
-  List<GalleryPhoto> _readLocalGalleryPhotos() {
-    if (!kIsWeb) return [];
-    final raw = web.window.localStorage.getItem(_localGalleryStorageKey);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final list = jsonDecode(raw) as List;
-      return [
-        for (final entry in list)
-          if (entry is Map)
-            GalleryPhoto(
-              challengeText: '${entry['challenge']}',
-              authorName: '${entry['author']}',
-              photoUrl: '${entry['url']}',
-              takenAt:
-                  DateTime.tryParse('${entry['timestamp']}') ?? DateTime.now(),
-            ),
-      ];
-    } catch (_) {
-      return [];
-    }
-  }
-
   /// Busca o álbum. Devolve `false` quando o endpoint está ligado mas a
   /// chamada falhou (caindo no álbum local), para o chamador manual saber
   /// diferenciar sucesso de falha.
@@ -666,7 +624,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     if (_disposed) return false;
     setState(() => _galleryLoading = true);
     final remote = _api.isEnabled ? await _api.fetchGallery() : null;
-    final photos = remote ?? _readLocalGalleryPhotos();
+    final photos = remote ?? readLocalGalleryPhotos();
     if (_disposed) return false;
     setState(() {
       _galleryPhotos = photos;
@@ -750,7 +708,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       // guarda no álbum local para a galeria continuar demonstrável de
       // ponta a ponta (FR-15). Se o endpoint estava ligado, isso é uma
       // falha de verdade — avisa o convidado.
-      _appendLocalGalleryPhoto(
+      appendLocalGalleryPhoto(
         GalleryPhoto(
           challengeText: challenge.text,
           authorName: guestName,

@@ -91,7 +91,6 @@ const nonPriorityPhotoChallenges = <PhotoChallenge>[
   ),
   PhotoChallenge(text: 'Foto com a mesa de doces', priority: false),
   PhotoChallenge(text: 'Foto com o seu prato', priority: false),
-  PhotoChallenge(text: 'Foto com os músicos', priority: false),
   PhotoChallenge(text: 'Foto com um garçom', priority: false),
   PhotoChallenge(text: 'Foto com alguém chorando', priority: false),
   PhotoChallenge(text: 'Selfie em frente a decoração', priority: false),

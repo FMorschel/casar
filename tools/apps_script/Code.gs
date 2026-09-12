@@ -105,7 +105,6 @@ var NON_PRIORITY_CHALLENGES = [
   'Foto com o buquê (ou tentando pegar ele)',
   'Foto com a mesa de doces',
   'Foto com o seu prato',
-  'Foto com os músicos',
   'Foto com um garçom',
   'Foto com alguém chorando',
   'Selfie em frente a decoração',

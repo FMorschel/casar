@@ -102,14 +102,29 @@ class PhotoCaptureState extends State<PhotoCapture> {
       var hasTorch = false;
       if (track != null) {
         try {
-          final torch = track.getCapabilities().torch.dartify();
+          final capabilities = track.getCapabilities();
+          final torch = capabilities.torch.dartify();
           hasTorch = switch (torch) {
             true => true,
             List() => torch.isNotEmpty,
             _ => false,
           };
-        } catch (_) {
+          // Diagnóstico temporário: alguns Android relatam suporte a
+          // lanterna via hardware, mas o Chrome não expõe `torch` em
+          // `getCapabilities()` para aquele device/driver de câmera — sem
+          // isso no console não dá para distinguir esse caso de um bug real
+          // na deteção. Ver via `chrome://inspect` com o cabo USB.
+          web.console.log(
+            'photo-capture: track=${track.label} facingMode=$_facingMode '
+                    'torch=$torch capabilities='
+                .toJS,
+          );
+          web.console.log(capabilities);
+        } catch (error) {
           hasTorch = false;
+          web.console.log(
+            'photo-capture: getCapabilities() falhou: $error'.toJS,
+          );
         }
       }
       setState(() {

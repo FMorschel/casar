@@ -32,6 +32,7 @@ const _priorityWeight = 3;
 ///    lista vazia) em vez de repetir — daí em diante o convidado segue só
 ///    com os desafios que ele mesmo escrever.
 List<PhotoChallenge> drawPhotoChallenges({
+  required List<PhotoChallenge> bank,
   required Set<String> pickedByGuest,
   required Set<String> pickedByAnyone,
   int count = challengesPerDraw,
@@ -39,7 +40,7 @@ List<PhotoChallenge> drawPhotoChallenges({
 }) {
   final rng = random ?? Random();
   final available = [
-    for (final challenge in allPhotoChallenges)
+    for (final challenge in bank)
       if (!pickedByGuest.contains(challenge.text)) challenge,
   ];
 

@@ -197,11 +197,32 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
 
   bool _disposed = false;
 
+  /// Banco de frases inteiro (ver [PhotoChallengesApi.fetchChallengeBank]),
+  /// buscado da planilha assim que a página abre — única fonte dele, sem
+  /// cópia local no site. `null` enquanto a busca não termina.
+  List<PhotoChallenge>? _challengeBank;
+
+  /// A busca de [_challengeBank] falhou (endpoint desligado ou a chamada não
+  /// respondeu): sem banco de frases não dá para sortear nem validar
+  /// desafios escritos à mão, então a página não sai desse estado sozinha.
+  bool _challengeBankFailed = false;
+
   @override
   void initState() {
     super.initState();
     _previewMode = readPreviewMode();
     _devForceReveal = _previewMode;
+    unawaited(_loadChallengeBank());
+  }
+
+  Future<void> _loadChallengeBank() async {
+    final bank = await _api.fetchChallengeBank();
+    if (_disposed) return;
+    if (bank == null) {
+      setState(() => _challengeBankFailed = true);
+      return;
+    }
+    setState(() => _challengeBank = bank);
   }
 
   @override
@@ -257,7 +278,11 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   }
 
   Future<void> _init(String guestName) async {
-    final stored = readGuestChallengeDraw(guestName);
+    final challengeBank = _challengeBank!;
+    final stored = readGuestChallengeDraw(
+      guestName,
+      challengeBank: challengeBank,
+    );
 
     List<PhotoChallenge>? drawn;
     Map<String, String>? remoteConfirmedPhotos;
@@ -265,6 +290,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       final remote = await _api.drawChallenges(
         guestName,
         guestId: readGuestId(),
+        challengeBank: challengeBank,
       );
       if (remote != null) {
         drawn = remote.challenges;
@@ -369,6 +395,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   /// por frases inéditas fica valendo só dentro deste navegador.
   List<PhotoChallenge> _localDraw(List<PhotoChallenge> current) {
     return drawPhotoChallenges(
+      bank: _challengeBank!,
       pickedByGuest: {for (final challenge in current) challenge.text},
       pickedByAnyone: const {},
     );
@@ -388,6 +415,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       final (remote, drawError) = await _api.drawMore(
         guestName,
         guestId: _guestId,
+        challengeBank: _challengeBank!,
       );
       if (remote != null) {
         updated = remote.challenges;
@@ -454,6 +482,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     final text = normalizeCustomChallenge(_customInput);
     final error = validateCustomChallenge(
       text,
+      bank: _challengeBank!,
       alsoAvoid: [
         for (final challenge in _challenges ?? const <PhotoChallenge>[])
           challenge.text,
@@ -727,6 +756,21 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
 
   @override
   Component build(BuildContext context) {
+    final challengeBank = _challengeBank;
+    if (challengeBank == null) {
+      if (_challengeBankFailed) {
+        return div(classes: 'photo-challenges-body', [
+          div(classes: 'photo-challenges-status', [
+            .text(
+              'Não deu para carregar os desafios agora. Recarregue a '
+              'página para tentar de novo.',
+            ),
+          ]),
+        ]);
+      }
+      return const LoadingIndicator('Carregando os desafios…');
+    }
+
     // Um elemento só na raiz, e não um `Component.fragment`: este é um
     // componente `@client`, e no site publicado o servidor entrega a ilha
     // vazia — todo o conteúdo entra na hidratação. Com vários nós na raiz
@@ -749,6 +793,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
         ),
       GuestNameGate(
         key: _gateKey,
+        challengeBank: challengeBank,
         onPreviewModeRequested: _enablePreviewMode,
         builder: (context, guestName) {
           if (_guestName != guestName) {
@@ -777,6 +822,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
         // seria reaproveitado e continuaria de onde o anterior parou.
         key: ValueKey([for (final c in unrevealed) c.text].join('|')),
         challenges: unrevealed,
+        challengeBank: _challengeBank!,
         onFinished: () => _onRevealFinished(guestName, unrevealed),
       );
     }

@@ -28,7 +28,14 @@ typedef GuestChallengeDraw = ({
 });
 
 /// Lê os desafios de [guestName] guardados neste navegador, se houver.
-GuestChallengeDraw? readGuestChallengeDraw(String guestName) {
+///
+/// [challengeBank] é o banco de frases buscado da planilha (ver
+/// [PhotoChallengesApi.fetchChallengeBank]), usado para reconhecer quais
+/// textos salvos são sorteáveis versus escritos pelo próprio convidado.
+GuestChallengeDraw? readGuestChallengeDraw(
+  String guestName, {
+  required List<PhotoChallenge> challengeBank,
+}) {
   if (!kIsWeb) return null;
   final raw = web.window.localStorage.getItem(_storageKeyFor(guestName));
   if (raw == null || raw.isEmpty) return null;
@@ -36,7 +43,7 @@ GuestChallengeDraw? readGuestChallengeDraw(String guestName) {
     final json = jsonDecode(raw) as Map;
     final challenges = [
       for (final text in (json['challenges'] as List).cast<String>())
-        resolvePhotoChallenge(text),
+        resolvePhotoChallenge(challengeBank, text),
     ];
     final photos = <String, String>{
       for (final entry in (json['photos'] as Map).entries)

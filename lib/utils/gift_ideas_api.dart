@@ -15,7 +15,9 @@ class GiftIdeasApi {
 
   bool get isEnabled => giftIdeasEndpoint.isNotEmpty;
 
-  /// Ideias que já estão na planilha. Devolve `null` quando não deu para
+  /// Tudo que está na aba `ideias`: o catálogo oficial (`author` vazio) e as
+  /// ideias sugeridas pelos convidados, juntos — única fonte de qualquer um
+  /// dos dois, sem cópia local no site. Devolve `null` quando não deu para
   /// buscar, para o chamador saber diferenciar "ninguém sugeriu nada" de
   /// "não consegui falar com a planilha".
   Future<List<GiftItem>?> fetchIdeas() async {

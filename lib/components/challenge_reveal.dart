@@ -22,11 +22,17 @@ import '../constants/theme.dart';
 class ChallengeReveal extends StatefulComponent {
   const ChallengeReveal({
     required this.challenges,
+    required this.challengeBank,
     required this.onFinished,
     super.key,
   });
 
   final List<PhotoChallenge> challenges;
+
+  /// Banco de frases inteiro (ver [PhotoChallengesApi.fetchChallengeBank]),
+  /// usado só para preencher os slots com textos aleatórios durante a
+  /// animação de sorteio.
+  final List<PhotoChallenge> challengeBank;
   final VoidCallback onFinished;
 
   @override
@@ -72,8 +78,9 @@ class ChallengeRevealState extends State<ChallengeReveal> {
         return;
       }
       setState(() {
-        _displayedTexts[index] =
-            allPhotoChallenges[_random.nextInt(allPhotoChallenges.length)].text;
+        _displayedTexts[index] = component
+            .challengeBank[_random.nextInt(component.challengeBank.length)]
+            .text;
       });
     });
   }

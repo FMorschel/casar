@@ -24,7 +24,12 @@ class GiftList extends StatefulComponent {
 }
 
 class GiftListState extends State<GiftList> {
-  List<GiftItem> customIdeas = [];
+  /// Tudo que está na aba `ideias`: o catálogo oficial (a seção "de
+  /// brincadeira" do site, com `author` vazio) e as ideias sugeridas pelos
+  /// convidados, juntos — a planilha é a única fonte dos dois. Semeado do
+  /// cache local (ver [_storageKey]) enquanto a busca não termina, para o
+  /// grid não aparecer vazio.
+  List<GiftItem> ideas = [];
   String nameInput = '';
   String priceInput = '';
   String authorInput = '';
@@ -69,7 +74,7 @@ class GiftListState extends State<GiftList> {
     if (kIsWeb) {
       final stored = web.window.localStorage.getItem(_storageKey);
       if (stored != null && stored.isNotEmpty) {
-        customIdeas = stored.split('\n').map(_parseIdea).toList();
+        ideas = stored.split('\n').map(_parseIdea).toList();
       }
       _loadIdeas();
     }
@@ -101,12 +106,13 @@ class GiftListState extends State<GiftList> {
     });
   }
 
-  /// Busca as ideias que os outros convidados já mandaram. Se a planilha não
-  /// responder, o cache local continua valendo — ninguém vê a lista vazia.
+  /// Busca o catálogo oficial mais as ideias que os convidados já mandaram.
+  /// Se a planilha não responder, o cache local continua valendo — ninguém
+  /// vê a lista vazia.
   Future<bool> _loadIdeas() async {
-    final ideas = await _api.fetchIdeas();
-    if (ideas == null || _disposed) return false;
-    setState(() => customIdeas = ideas);
+    final fetched = await _api.fetchIdeas();
+    if (fetched == null || _disposed) return false;
+    setState(() => ideas = fetched);
     _cacheIdeas();
     return true;
   }
@@ -138,7 +144,7 @@ class GiftListState extends State<GiftList> {
     if (!kIsWeb) return;
     web.window.localStorage.setItem(
       _storageKey,
-      customIdeas
+      ideas
           .map((g) => '${g.emoji}|${g.name}|${g.price}|${g.author}')
           .join('\n'),
     );
@@ -250,7 +256,7 @@ class GiftListState extends State<GiftList> {
     // A ideia entra na tela na hora: a viagem até a planilha não pode fazer o
     // convidado achar que o botão não funcionou.
     setState(() {
-      customIdeas = [...customIdeas, idea];
+      ideas = [...ideas, idea];
       nameInput = '';
       priceInput = '';
       authorInput = '';
@@ -291,7 +297,7 @@ class GiftListState extends State<GiftList> {
       div(
         classes: 'gifts-grid',
         [
-          for (final gift in [...giftList, ...customIdeas]) _giftCard(gift),
+          for (final gift in ideas) _giftCard(gift),
         ],
       ),
       div(classes: 'gift-add', [

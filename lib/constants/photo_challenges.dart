@@ -45,138 +45,31 @@ class PhotoChallenge {
 /// Quantos desafios saem em cada sorteio.
 const challengesPerDraw = 3;
 
-/// Desafios que devem aparecer com mais frequência nos sorteios.
-const priorityPhotoChallenges = <PhotoChallenge>[
-  PhotoChallenge(text: 'Foto brindando com a sua mesa', priority: true),
-  PhotoChallenge(text: 'Foto com os noivos (sim, os dois)', priority: true),
-  PhotoChallenge(text: 'Foto de um casal (não os noivos)', priority: true),
-  PhotoChallenge(
-    text: 'Foto só dos padrinhos (pelo menos 2!)',
-    priority: true,
-  ),
-  PhotoChallenge(text: 'Foto dos pais dos noivos', priority: true),
-  PhotoChallenge(
-    text:
-        'Recrie uma foto antiga dos noivos (juntos - não precisa estar na foto)',
-    priority: true,
-  ),
-  PhotoChallenge(
-    text: 'Foto de um abraço dos noivos com os pais',
-    priority: true,
-  ),
-  PhotoChallenge(
-    text: 'Foto de alguém no meio de uma risada',
-    priority: true,
-  ),
-  PhotoChallenge(text: 'Foto de pessoas conversando', priority: true),
-  PhotoChallenge(text: 'Foto com o logo do restaurante', priority: true),
-  PhotoChallenge(
-    text: 'Foto de um abraço entre amigos (não vale família)',
-    priority: true,
-  ),
-  PhotoChallenge(text: 'Foto do noivo sem telas', priority: true),
-  PhotoChallenge(
-    text: 'Foto da noiva sem estar falando ou gesticulando',
-    priority: true,
-  ),
-  PhotoChallenge(text: 'Amigos no pergolado fazendo uma pose', priority: true),
-];
-
-/// Desafios que entram no sorteio com peso normal.
-const nonPriorityPhotoChallenges = <PhotoChallenge>[
-  PhotoChallenge(text: 'Selfie com alguém fora da sua mesa', priority: false),
-  PhotoChallenge(
-    text: 'Foto com o buquê (ou tentando pegar ele)',
-    priority: false,
-  ),
-  PhotoChallenge(text: 'Foto com a mesa de doces', priority: false),
-  PhotoChallenge(text: 'Foto com o seu prato', priority: false),
-  PhotoChallenge(text: 'Foto com um garçom', priority: false),
-  PhotoChallenge(text: 'Foto com alguém chorando', priority: false),
-  PhotoChallenge(text: 'Selfie em frente a decoração', priority: false),
-  PhotoChallenge(text: 'Foto com uma criança', priority: false),
-  PhotoChallenge(
-    text: 'Registro do bolo antes de ser cortado',
-    priority: false,
-  ),
-  PhotoChallenge(
-    text: 'Foto de mãos dadas com quem está do seu lado',
-    priority: false,
-  ),
-  PhotoChallenge(text: 'Foto com a chopeira ou bar', priority: false),
-  PhotoChallenge(text: 'Foto no pergolado', priority: false),
-  PhotoChallenge(text: 'Foto no laguinho', priority: false),
-  PhotoChallenge(text: 'Foto no playground', priority: false),
-  PhotoChallenge(text: 'Foto no mato', priority: false),
-  PhotoChallenge(text: 'Foto sentado na grama', priority: false),
-  PhotoChallenge(
-    text: 'Foto do casal que está a mais tempo junto',
-    priority: false,
-  ),
-  PhotoChallenge(
-    text: 'Foto tentando roubar um doce escondido',
-    priority: false,
-  ),
-  PhotoChallenge(text: 'Foto da roupa de alguém', priority: false),
-  PhotoChallenge(text: 'Foto do local da festa', priority: false),
-  PhotoChallenge(text: 'Foto de duas gerações juntas', priority: false),
-  PhotoChallenge(text: 'Foto de alguém dançando', priority: false),
-  PhotoChallenge(text: 'Foto de alguém se arrumando', priority: false),
-  PhotoChallenge(text: 'Uma foto no banheiro', priority: false),
-  PhotoChallenge(
-    text: 'Foto com a pessoas mais jovem da festa',
-    priority: false,
-  ),
-  PhotoChallenge(
-    text: 'Foto com a pessoa mais velha da festa',
-    priority: false,
-  ),
-  PhotoChallenge(text: 'Foto fazendo pose de fisiculturista', priority: false),
-  PhotoChallenge(text: 'Foto fingindo pescar no lago', priority: false),
-  PhotoChallenge(text: 'Foto na entrada do restaurante', priority: false),
-  PhotoChallenge(text: 'Foto de alguém descalço', priority: false),
-  PhotoChallenge(
-    text: 'Foto de dois familiares que se parecem muito',
-    priority: false,
-  ),
-  PhotoChallenge(text: 'Foto de um drink', priority: false),
-  PhotoChallenge(
-    text:
-        'Uma foto tentando dar a maior mordida possível em um hambúrguer sem perder a compostura',
-    priority: false,
-  ),
-  PhotoChallenge(
-    text: 'Tire uma foto "escondido" em algum lugar',
-    priority: false,
-  ),
-];
-
-/// Todos os desafios disponíveis, prioritários primeiro.
-const allPhotoChallenges = [
-  ...priorityPhotoChallenges,
-  ...nonPriorityPhotoChallenges,
-];
-
-/// Procura um desafio pelo seu [text].
+/// Procura um desafio pelo seu [text] em [bank].
 ///
 /// O sorteio salvo (planilha/`localStorage`) só guarda o texto do desafio,
 /// não a flag [PhotoChallenge.priority] — esta função é o caminho de volta
-/// de texto para o desafio completo.
-PhotoChallenge? findPhotoChallengeByText(String text) {
-  for (final challenge in allPhotoChallenges) {
+/// de texto para o desafio completo. [bank] é o banco de frases buscado da
+/// planilha (aba `banco_desafios`, ver [PhotoChallengesApi.fetchChallengeBank]) —
+/// única fonte dele, não há mais uma cópia local no site.
+PhotoChallenge? findPhotoChallengeByText(
+  List<PhotoChallenge> bank,
+  String text,
+) {
+  for (final challenge in bank) {
     if (challenge.text == text) return challenge;
   }
   return null;
 }
 
-/// Devolve o desafio de [text], tratando o que não está no banco de frases
-/// como um desafio escrito pelo próprio convidado.
+/// Devolve o desafio de [text] em [bank], tratando o que não está no banco de
+/// frases como um desafio escrito pelo próprio convidado.
 ///
 /// Depois dos sorteados, o convidado pode mandar fotos com frases que ele
 /// mesmo escreveu — elas voltam da planilha misturadas com as sorteadas e só
 /// dá para diferenciá-las assim, por não estarem no banco.
-PhotoChallenge resolvePhotoChallenge(String text) =>
-    findPhotoChallengeByText(text) ?? PhotoChallenge.custom(text);
+PhotoChallenge resolvePhotoChallenge(List<PhotoChallenge> bank, String text) =>
+    findPhotoChallengeByText(bank, text) ?? PhotoChallenge.custom(text);
 
 /// Um desafio atribuído a um convidado, junto com o progresso local da
 /// captura (FR-13).

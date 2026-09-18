@@ -23,11 +23,16 @@ import 'loading_indicator.dart';
 class GuestNameGate extends StatefulComponent {
   const GuestNameGate({
     required this.builder,
+    required this.challengeBank,
     this.onPreviewModeRequested,
     super.key,
   });
 
   final Component Function(BuildContext context, String guestName) builder;
+
+  /// Banco de frases inteiro (ver [PhotoChallengesApi.fetchChallengeBank]),
+  /// repassado para [PhotoChallengesApi.checkExisting] ao checar um nome.
+  final List<PhotoChallenge> challengeBank;
 
   /// Avisa que a senha do modo prévia (ver [isPreviewModeCode]) foi digitada
   /// no lugar do nome. Quem liga o modo de fato é a página — o portão só
@@ -118,7 +123,10 @@ class GuestNameGateState extends State<GuestNameGate> {
     if (!isGuestNameLongEnough(normalized)) return;
 
     setState(() => _step = _GateStep.checking);
-    final existing = await _api.checkExisting(normalized);
+    final existing = await _api.checkExisting(
+      normalized,
+      challengeBank: component.challengeBank,
+    );
     if (_disposed) return;
 
     if (existing == null || existing.challenges.isEmpty) {

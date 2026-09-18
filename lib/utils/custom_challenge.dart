@@ -42,10 +42,13 @@ String normalizeCustomChallenge(String text) =>
 /// Valida a frase já normalizada por [normalizeCustomChallenge], devolvendo
 /// `null` quando ela serve.
 ///
-/// [alsoAvoid] são frases que também contam como repetidas além do banco de
-/// desafios — na prática, os desafios que este convidado já tem.
+/// [bank] é o banco de frases buscado da planilha (ver
+/// [PhotoChallengesApi.fetchChallengeBank]). [alsoAvoid] são frases que
+/// também contam como repetidas além do banco de desafios — na prática, os
+/// desafios que este convidado já tem.
 CustomChallengeError? validateCustomChallenge(
   String text, {
+  required List<PhotoChallenge> bank,
   Iterable<String> alsoAvoid = const [],
 }) {
   if (text.length > maxCustomChallengeLength) {
@@ -60,7 +63,7 @@ CustomChallengeError? validateCustomChallenge(
 
   // Comparação em maiúsculas: o que muda só na caixa é o mesmo desafio.
   final upper = text.toUpperCase();
-  for (final existing in allPhotoChallenges) {
+  for (final existing in bank) {
     if (existing.text.toUpperCase() == upper) {
       return CustomChallengeError.duplicate;
     }

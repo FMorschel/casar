@@ -24,7 +24,10 @@ class PhotoChallengesApi {
   /// vazio) quando o nome ainda não tem sorteio, e `null` quando a chamada
   /// falha (o chamador trata como "não deu pra checar" e segue em frente,
   /// para não travar o convidado).
-  Future<DrawnChallenges?> checkExisting(String guestName) async {
+  Future<DrawnChallenges?> checkExisting(
+    String guestName, {
+    required List<PhotoChallenge> challengeBank,
+  }) async {
     if (!isEnabled) return null;
     try {
       final response = await http
@@ -36,7 +39,36 @@ class PhotoChallengesApi {
           .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return null;
 
-      return _parseDraw(response.body).$1;
+      return _parseDraw(response.body, challengeBank).$1;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Busca o banco de frases dos desafios (aba `banco_desafios` da
+  /// planilha) — única fonte dele, sem cópia local no site. Devolve `null`
+  /// quando não deu para buscar.
+  Future<List<PhotoChallenge>?> fetchChallengeBank() async {
+    if (!isEnabled) return null;
+    try {
+      final response = await http
+          .get(Uri.parse('$photoChallengesEndpoint?action=challenges'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return null;
+
+      final body = jsonDecode(response.body);
+      if (body is! Map || body['ok'] != true || body['challenges'] is! List) {
+        return null;
+      }
+
+      return [
+        for (final entry in body['challenges'] as List)
+          if (entry is Map)
+            PhotoChallenge(
+              text: '${entry['text']}',
+              priority: entry['priority'] == true,
+            ),
+      ];
     } catch (_) {
       return null;
     }
@@ -63,12 +95,13 @@ class PhotoChallengesApi {
   Future<DrawnChallenges?> drawChallenges(
     String guestName, {
     String? guestId,
+    required List<PhotoChallenge> challengeBank,
   }) async {
     final (drawn, _) = await _postDraw({
       'action': 'draw',
       'name': guestName,
       if (guestId != null) 'id': guestId,
-    });
+    }, challengeBank);
     return drawn;
   }
 
@@ -87,16 +120,18 @@ class PhotoChallengesApi {
   Future<(DrawnChallenges?, String?)> drawMore(
     String guestName, {
     String? guestId,
+    required List<PhotoChallenge> challengeBank,
   }) async {
     return _postDraw({
       'action': 'drawMore',
       'name': guestName,
       if (guestId != null) 'id': guestId,
-    });
+    }, challengeBank);
   }
 
   Future<(DrawnChallenges?, String?)> _postDraw(
     Map<String, Object?> payload,
+    List<PhotoChallenge> challengeBank,
   ) async {
     if (!isEnabled) return (null, 'endpoint_disabled');
     try {
@@ -110,7 +145,7 @@ class PhotoChallengesApi {
       if (response.statusCode != 200) {
         return (null, 'http_${response.statusCode}');
       }
-      return _parseDraw(response.body);
+      return _parseDraw(response.body, challengeBank);
     } catch (err) {
       return (null, '$err');
     }
@@ -118,10 +153,13 @@ class PhotoChallengesApi {
 
   /// Lê a resposta de `draw`/`drawMore`/`check`, que têm o mesmo formato.
   ///
-  /// Frases fora do banco de desafios são as que o próprio convidado
+  /// Frases fora de [challengeBank] são as que o próprio convidado
   /// escreveu, então voltam como [PhotoChallenge.custom] em vez de
   /// invalidarem a resposta inteira.
-  (DrawnChallenges?, String?) _parseDraw(String responseBody) {
+  (DrawnChallenges?, String?) _parseDraw(
+    String responseBody,
+    List<PhotoChallenge> challengeBank,
+  ) {
     final body = jsonDecode(responseBody);
     if (body is! Map || body['ok'] != true || body['challenges'] is! List) {
       final error = body is Map ? body['error'] : null;
@@ -135,7 +173,7 @@ class PhotoChallengesApi {
         guestName: '${body['name'] ?? ''}',
         challenges: [
           for (final text in body['challenges'] as List)
-            resolvePhotoChallenge('$text'),
+            resolvePhotoChallenge(challengeBank, '$text'),
         ],
         confirmedPhotos: {
           if (photos is Map)

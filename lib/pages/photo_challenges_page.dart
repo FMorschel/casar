@@ -182,6 +182,10 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   /// já que os noivos não vão vê-la no álbum sozinhos.
   final Set<String> _uploadFailedChallenges = {};
 
+  /// Textos dos desafios cujo reenvio (botão "Tentar de novo") está em
+  /// andamento — evita disparar duas tentativas para o mesmo desafio.
+  final Set<String> _retryingUploads = {};
+
   /// Avisos passageiros no rodapé, para o convidado saber quando a página
   /// está conversando com a planilha/Drive (algo que acontece fora do
   /// aparelho dele e, sem isso, pareceria só ter travado).
@@ -711,7 +715,23 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       challenge.text,
     });
 
-    final takenAt = DateTime.now();
+    await _uploadPhoto(
+      guestName: guestName,
+      challenge: challenge,
+      dataUrl: dataUrl,
+      takenAt: DateTime.now(),
+    );
+  }
+
+  /// Envia (ou reenvia) a foto de [challenge] à planilha/Drive, atualizando
+  /// os avisos na tela conforme o resultado. Compartilhado entre a
+  /// confirmação da foto e o botão "Tentar de novo" (ver [_retryUpload]).
+  Future<void> _uploadPhoto({
+    required String guestName,
+    required PhotoChallenge challenge,
+    required String dataUrl,
+    required DateTime takenAt,
+  }) async {
     String? remoteUrl;
     if (_api.isEnabled) {
       _showToast(
@@ -738,21 +758,58 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       // Sem envio (endpoint desligado, ou ligado mas a chamada falhou):
       // guarda no álbum local para a galeria continuar demonstrável de
       // ponta a ponta (FR-15). Se o endpoint estava ligado, isso é uma
-      // falha de verdade — avisa o convidado.
-      appendLocalGalleryPhoto(
-        GalleryPhoto(
-          challengeText: challenge.text,
-          authorName: guestName,
-          photoUrl: dataUrl,
-          takenAt: takenAt,
-        ),
-      );
+      // falha de verdade — avisa o convidado, que pode tentar de novo pelo
+      // botão "Tentar de novo". Só grava no álbum local na primeira falha —
+      // repetir pelo botão não deve duplicar a entrada de lá a cada
+      // tentativa.
+      if (!_uploadFailedChallenges.contains(challenge.text)) {
+        appendLocalGalleryPhoto(
+          GalleryPhoto(
+            challengeText: challenge.text,
+            authorName: guestName,
+            photoUrl: dataUrl,
+            takenAt: takenAt,
+          ),
+        );
+      }
       if (_api.isEnabled && !_disposed) {
         setState(() => _uploadFailedChallenges.add(challenge.text));
       }
+    } else if (!_disposed) {
+      setState(() => _uploadFailedChallenges.remove(challenge.text));
     }
 
     await _refreshGallery();
+  }
+
+  /// Tenta reenviar a foto de um desafio que falhou antes (FR-15), sem pedir
+  /// para o convidado tirar a foto de novo — ela já está no `localStorage`
+  /// junto com o resto do sorteio (ver [_applyChallenges]).
+  Future<void> _retryUpload(String guestName, String challengeText) async {
+    if (_retryingUploads.contains(challengeText)) return;
+    final dataUrl = _confirmedPhotos[challengeText];
+    final challenge = _challengeByText(challengeText);
+    if (dataUrl == null || challenge == null) return;
+
+    setState(() => _retryingUploads.add(challengeText));
+    await _uploadPhoto(
+      guestName: guestName,
+      challenge: challenge,
+      dataUrl: dataUrl,
+      takenAt: DateTime.now(),
+    );
+    if (_disposed) return;
+    setState(() => _retryingUploads.remove(challengeText));
+  }
+
+  /// Desafio (pendente ou já feito) cujo texto é [text], para o botão
+  /// "Tentar de novo" recuperar o [PhotoChallenge] a partir só do texto
+  /// guardado em [_uploadFailedChallenges].
+  PhotoChallenge? _challengeByText(String text) {
+    for (final challenge in _challenges ?? const <PhotoChallenge>[]) {
+      if (challenge.text == text) return challenge;
+    }
+    return null;
   }
 
   @override
@@ -840,19 +897,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
         ]),
       if (selected == null) _buildNextStep(guestName, pending: pending),
       if (_uploadFailedChallenges.isNotEmpty)
-        p(classes: 'photo-challenges-upload-error', [
-          .text(
-            _uploadFailedChallenges.length == 1
-                ? 'Não conseguimos enviar sua foto de '
-                      '"${_uploadFailedChallenges.first}" para o álbum '
-                      'compartilhado. Ela ficou salva só neste navegador — '
-                      'avise os noivos para não perder o registro!'
-                : 'Não conseguimos enviar ${_uploadFailedChallenges.length} '
-                      'das suas fotos para o álbum compartilhado. Elas '
-                      'ficaram salvas só neste navegador — avise os noivos '
-                      'para não perder o registro!',
-          ),
-        ]),
+        _buildUploadErrors(guestName),
       if (selected != null) ...[
         if (selected.isCustom)
           div(classes: 'photo-challenges-custom-active', [
@@ -1069,6 +1114,38 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
         attributes: const {'type': 'button'},
         onClick: _submitCustomChallenge,
         [.text('Tirar a foto desse desafio')],
+      ),
+    ]);
+  }
+
+  /// Avisa sobre fotos que ficaram só neste navegador (FR-15), uma por
+  /// desafio, cada uma com um botão para tentar reenviar sem precisar tirar
+  /// a foto de novo.
+  Component _buildUploadErrors(String guestName) {
+    return div(classes: 'photo-challenges-upload-errors', [
+      for (final challengeText in _uploadFailedChallenges)
+        _buildUploadError(guestName, challengeText),
+    ]);
+  }
+
+  Component _buildUploadError(String guestName, String challengeText) {
+    final retrying = _retryingUploads.contains(challengeText);
+    return div(classes: 'photo-challenges-upload-error', [
+      p(classes: 'photo-challenges-upload-error-text', [
+        .text(
+          'Não conseguimos enviar sua foto de "$challengeText" para o álbum '
+          'compartilhado. Ela ficou salva só neste navegador — avise os '
+          'noivos para não perder o registro, ou tente enviar de novo.',
+        ),
+      ]),
+      button(
+        classes: 'photo-challenges-action secondary',
+        attributes: {
+          'type': 'button',
+          if (retrying) 'disabled': '',
+        },
+        onClick: () => _retryUpload(guestName, challengeText),
+        [.text(retrying ? 'Enviando…' : 'Tentar de novo')],
       ),
     ]);
   }
@@ -1365,16 +1442,35 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
         whiteSpace: .noWrap,
       ),
     ]),
-    css('.photo-challenges-upload-error').styles(
-      color: AppColors.accentStrong,
-      backgroundColor: AppColors.bgElevated,
-      border: .all(style: .solid, color: AppColors.accentStrong, width: 1.px),
-      radius: .circular(AppRadius.md),
-      padding: .symmetric(vertical: 10.px, horizontal: 14.px),
-      textAlign: .center,
-      fontWeight: .w600,
+    css('.photo-challenges-upload-errors').styles(
+      display: .flex,
+      flexDirection: .column,
+      gap: .all(10.px),
       width: 100.percent,
       maxWidth: 480.px,
     ),
+    css('.photo-challenges-upload-error', [
+      css('&').styles(
+        display: .flex,
+        flexDirection: .column,
+        alignItems: .center,
+        gap: .all(8.px),
+        color: AppColors.accentStrong,
+        backgroundColor: AppColors.bgElevated,
+        border: .all(
+          style: .solid,
+          color: AppColors.accentStrong,
+          width: 1.px,
+        ),
+        radius: .circular(AppRadius.md),
+        padding: .symmetric(vertical: 10.px, horizontal: 14.px),
+        width: 100.percent,
+      ),
+      css('.photo-challenges-upload-error-text').styles(
+        margin: .zero,
+        textAlign: .center,
+        fontWeight: .w600,
+      ),
+    ]),
   ];
 }

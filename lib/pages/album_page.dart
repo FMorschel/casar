@@ -100,6 +100,7 @@ class AlbumFlowState extends State<AlbumFlow> {
   }
 
   Future<bool> _refreshGallery() async {
+    if (!kIsWeb) return false;
     if (_disposed) return false;
     setState(() => _galleryLoading = true);
     final remote = _api.isEnabled ? await _api.fetchGallery() : null;

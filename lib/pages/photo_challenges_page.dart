@@ -216,6 +216,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   }
 
   Future<void> _loadChallengeBank() async {
+    if (!kIsWeb) return;
     final bank = await _api.fetchChallengeBank();
     if (_disposed) return;
     if (bank == null) {

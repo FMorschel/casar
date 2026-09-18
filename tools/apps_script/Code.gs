@@ -14,6 +14,18 @@ var SHEET_NAME = 'ideias';
 /** Colunas da planilha, na ordem. */
 var HEADERS = ['timestamp', 'emoji', 'nome', 'valor', 'autor'];
 
+/**
+ * Ideias com `timestamp` vazio são o catálogo oficial (a seção "de
+ * brincadeira" do site), não sugestão de convidado — essas linhas já vêm
+ * populadas na planilha, sem passar por este arquivo. `autor` não serve pra
+ * essa distinção: é opcional no formulário, então uma sugestão de convidado
+ * também pode chegar sem autor. `timestamp` sim, é gravado sempre que o
+ * site manda uma ideia (ver `doPostIdea_`) — só as linhas do catálogo
+ * oficial ficam sem ele. Compartilham a aba e o teto de linhas com as
+ * ideias sugeridas de propósito: o pedido foi ter as duas listas juntas num
+ * lugar só, sem uma aba separada para o catálogo oficial.
+ */
+
 /** Limites de tamanho — a planilha é pública para escrita, então nada entra sem teto. */
 var MAX_EMOJI = 8;
 var MAX_NAME = 120;
@@ -74,68 +86,12 @@ var CHALLENGES_PER_DRAW = 3;
 var PRIORITY_WEIGHT = 3;
 
 /**
- * Desafios prioritários: pelo menos um por sorteio (enquanto sobrar algum
- * que o convidado ainda não pegou) e peso maior nas vagas restantes —
- * veja `pickChallenges_`.
+ * Aba do banco de frases dos desafios de foto: uma linha por frase, com a
+ * marca de prioritária. É a única fonte desse banco — essas linhas já vêm
+ * populadas na planilha, sem passar por este arquivo.
  */
-var PRIORITY_CHALLENGES = [
-  'Foto brindando com a sua mesa',
-  'Foto com os noivos (sim, os dois)',
-  'Foto de um casal (não os noivos)',
-  'Foto só dos padrinhos (pelo menos 2!)',
-  'Foto dos pais dos noivos',
-  'Recrie uma foto antiga dos noivos (juntos - não precisa estar na foto)',
-  'Foto de um abraço dos noivos com os pais',
-  'Foto de alguém no meio de uma risada',
-  'Foto de pessoas conversando',
-  'Foto com o logo do restaurante',
-  'Foto de um abraço entre amigos (não vale família)',
-  'Foto do noivo sem telas',
-  'Foto da noiva sem estar falando ou gesticulando',
-  'Amigos no pergolado fazendo uma pose',
-];
-
-/**
- * Desafios não prioritários: mesmo peso entre si, sorteados com menos
- * frequência que os prioritários e sem obrigação de aparecer num sorteio —
- * veja `pickChallenges_`.
- */
-var NON_PRIORITY_CHALLENGES = [
-  'Selfie com alguém fora da sua mesa',
-  'Foto com o buquê (ou tentando pegar ele)',
-  'Foto com a mesa de doces',
-  'Foto com o seu prato',
-  'Foto com um garçom',
-  'Foto com alguém chorando',
-  'Selfie em frente a decoração',
-  'Foto com uma criança',
-  'Registro do bolo antes de ser cortado',
-  'Foto de mãos dadas com quem está do seu lado',
-  'Foto com a chopeira ou bar',
-  'Foto no pergolado',
-  'Foto no laguinho',
-  'Foto no playground',
-  'Foto no mato',
-  'Foto sentado na grama',
-  'Foto do casal que está a mais tempo junto',
-  'Foto tentando roubar um doce escondido',
-  'Foto da roupa de alguém',
-  'Foto do local da festa',
-  'Foto de duas gerações juntas',
-  'Foto de alguém dançando',
-  'Foto de alguém se arrumando',
-  'Uma foto no banheiro',
-  'Foto com a pessoas mais jovem da festa',
-  'Foto com a pessoa mais velha da festa',
-  'Foto fazendo pose de fisiculturista',
-  'Foto fingindo pescar no lago',
-  'Foto na entrada do restaurante',
-  'Foto de alguém descalço',
-  'Foto de dois familiares que se parecem muito',
-  'Foto de um drink',
-  'Uma foto tentando dar a maior mordida possível em um hambúrguer sem perder a compostura',
-  'Tire uma foto "escondido" em algum lugar',
-];
+var CHALLENGE_SHEET_NAME = 'banco_desafios';
+var CHALLENGE_HEADERS = ['texto', 'prioridade'];
 
 function ss_() {
   return SpreadsheetApp.openById(SHEET_ID);
@@ -179,6 +135,34 @@ function guestSheet_() {
   }
   applyDateTimeFormat_(sheet, [3, 4]); // criado_em, renomeado_em
   return sheet;
+}
+
+function challengeBankSheet_() {
+  var ss = ss_();
+  var sheet = ss.getSheetByName(CHALLENGE_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CHALLENGE_SHEET_NAME);
+  }
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(CHALLENGE_HEADERS);
+  }
+  return sheet;
+}
+
+/** Lê o banco de frases inteiro da aba `CHALLENGE_SHEET_NAME`. */
+function readChallengeBank_() {
+  var sheet = challengeBankSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var rows = sheet.getRange(2, 1, lastRow - 1, CHALLENGE_HEADERS.length).getValues();
+  return rows
+    .filter(function (row) {
+      return String(row[0]).trim() !== '';
+    })
+    .map(function (row) {
+      return { text: String(row[0]), priority: row[1] === true };
+    });
 }
 
 /**
@@ -381,6 +365,7 @@ function resolveGuest_(rows, body) {
 function doGet(e) {
   var action = e && e.parameter && e.parameter.action;
   if (action === 'gallery') return doGetGallery_();
+  if (action === 'challenges') return json_({ ok: true, challenges: readChallengeBank_() });
   return doGetIdeas_();
 }
 
@@ -589,13 +574,31 @@ function doPostIdea_(body) {
     var sheet = sheet_();
     sheet.appendRow([new Date(), idea.emoji, idea.name, idea.price, idea.author]);
     if (sheet.getLastRow() > MAX_ROWS + 1) {
-      sheet.deleteRow(2);
+      deleteOldestSuggestion_(sheet);
     }
   } finally {
     lock.releaseLock();
   }
 
   return json_({ ok: true, idea: idea });
+}
+
+/**
+ * Apaga a sugestão mais antiga de [sheet] para respeitar `MAX_ROWS` — pula
+ * linhas com `timestamp` vazio (catálogo oficial, ver comentário de
+ * `HEADERS`): elas não devem sumir só porque acumularam sugestões de
+ * convidados desde então. Sem sugestão nenhuma para apagar (sheet só com
+ * catálogo oficial), não faz nada.
+ */
+function deleteOldestSuggestion_(sheet) {
+  var lastRow = sheet.getLastRow();
+  var timestamps = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (var i = 0; i < timestamps.length; i++) {
+    if (String(timestamps[i][0]).trim() !== '') {
+      sheet.deleteRow(i + 2);
+      return;
+    }
+  }
 }
 
 /** Todas as linhas da aba de desafios (sem o cabeçalho). */
@@ -756,14 +759,7 @@ function doPostDrawMore_(body) {
 
 /** O banco de frases inteiro, com a marca de prioritária. */
 function allChallenges_() {
-  var all = [];
-  for (var i = 0; i < PRIORITY_CHALLENGES.length; i++) {
-    all.push({ text: PRIORITY_CHALLENGES[i], priority: true });
-  }
-  for (var j = 0; j < NON_PRIORITY_CHALLENGES.length; j++) {
-    all.push({ text: NON_PRIORITY_CHALLENGES[j], priority: false });
-  }
-  return all;
+  return readChallengeBank_();
 }
 
 /**

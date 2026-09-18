@@ -23,7 +23,13 @@ Planilha usada:
    site.
 
 A aba `ideias` é criada sozinha no primeiro envio, com as colunas
-`timestamp | emoji | nome | valor | autor`.
+`timestamp | emoji | nome | valor | autor`, e já nasce populada com o
+catálogo oficial (a seção "de brincadeira" da lista de presentes) — linhas
+com `timestamp` vazio são esse catálogo, não sugestão de convidado (`autor`
+não serve pra essa distinção porque é opcional no formulário de sugestão).
+As duas listas moram juntas de propósito: editar o catálogo oficial depois
+disso é editar essas linhas na planilha (ou adicionar linha nova com
+`timestamp` vazio), sem precisar tocar em `Code.gs`.
 
 ## Depois
 
@@ -39,8 +45,9 @@ A aba `ideias` é criada sozinha no primeiro envio, com as colunas
 
 A URL aceita escrita de qualquer pessoa, sem login e sem aprovação — foi o
 combinado. Os limites que existem são de tamanho de campo e um teto de 500
-ideias (a mais antiga sai). Se alguém escrever bobagem, a correção é apagar a
-linha na planilha.
+ideias (a sugestão mais antiga sai; as linhas do catálogo oficial, com
+`timestamp` vazio, nunca são apagadas por esse teto). Se alguém escrever
+bobagem, a correção é apagar a linha na planilha.
 
 ## Desafios de foto (mesma implantação)
 
@@ -94,7 +101,15 @@ Depois cole a mesma URL (sem mudar nada) em `photoChallengesEndpoint`, em
   migra sozinha essa coluna para `guest_id` (criando uma linha em
   `convidados` para cada nome distinto que já estivesse na planilha) —
   não precisa mexer na planilha à mão.
-
+- `banco_desafios` — `texto | prioridade`, uma linha por frase sorteável
+  dos desafios de foto. É a única fonte desse banco: o site não tem mais
+  uma cópia local dele, então adicionar, remover ou editar um desafio é
+  editar esta aba, sem precisar tocar em `Code.gs` nem publicar o site de
+  novo. `prioridade` é `TRUE`/`FALSE` (pelo menos uma frase com `TRUE`
+  sempre entra em cada sorteio, enquanto sobrar alguma que o convidado
+  ainda não pegou). A aba nasce populada com o banco original na primeira
+  vez que é criada — dali em diante essa cópia inicial no `Code.gs` não é
+  lida de novo.
 ### Ações novas
 
 - `GET ?action=gallery` — devolve `{photos: [{challenge, author, url,
@@ -149,8 +164,17 @@ Depois cole a mesma URL (sem mudar nada) em `photoChallengesEndpoint`, em
   palavras de duas letras ou mais, e não pode repetir uma frase do banco de
   desafios).
 
-Sem `action` (nos dois verbos), o comportamento é exatamente o mesmo de
-hoje — a lista de presentes não muda em nada.
+- `GET ?action=challenges` — devolve `{ok: true, challenges: [{text,
+  priority}, ...]}` com o banco de frases inteiro (aba `banco_desafios`).
+  O site busca isso ao abrir a página de desafios, antes de sortear ou
+  validar qualquer frase — sem essa resposta a página não sai do estado de
+  carregando.
+O catálogo oficial de presentes não tem `action` próprio: ele mora na aba
+`ideias` junto com as ideias sugeridas (ver comentário de `HEADERS` em
+`Code.gs`), então `GET` sem `action` já devolve as duas listas juntas, na
+ordem da planilha — o site não diferencia uma da outra ao mostrar (só o
+teto de `MAX_ROWS`, em `Code.gs`, olha pro `timestamp` vazio para nunca
+apagar o catálogo oficial).
 
 Para apagar uma foto da galeria (ex.: conteúdo indevido), apague `foto_url`
 e `tirada_em` da linha correspondente na aba `desafios_fotos` (não a linha

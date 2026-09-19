@@ -188,24 +188,26 @@ class PhotoChallengesApi {
   /// Envia a foto de um desafio confirmado.
   ///
   /// [photoDataUrl] é a string completa `data:image/...;base64,...` que
-  /// vem do canvas de captura. Devolve a URL da foto já salva, ou `null`
-  /// quando o envio falha — nesse caso o chamador mantém a foto no
-  /// `localStorage` para tentar de novo depois (FR-15).
+  /// vem do canvas de captura. Devolve a URL da foto já salva, ou o motivo
+  /// do erro (`http_<status>`, o `error` que o Apps Script devolve, ou a
+  /// exceção de rede/timeout como string) quando o envio falha — nesse caso
+  /// o chamador mantém a foto no `localStorage` para tentar de novo depois
+  /// (FR-15).
   ///
   /// Um desafio escrito pelo convidado ([PhotoChallenge.isCustom]) não tem
   /// linha sorteada esperando na planilha; o servidor cria a linha dele no
   /// momento do envio.
-  Future<String?> uploadPhoto({
+  Future<(String?, String?)> uploadPhoto({
     required String guestName,
     String? guestId,
     required PhotoChallenge challenge,
     required String photoDataUrl,
     required DateTime takenAt,
   }) async {
-    if (!isEnabled) return null;
+    if (!isEnabled) return (null, 'endpoint_disabled');
     try {
       final commaIndex = photoDataUrl.indexOf(',');
-      if (commaIndex == -1) return null;
+      if (commaIndex == -1) return (null, 'invalid_photo_data');
       final header = photoDataUrl.substring(5, commaIndex); // after 'data:'
       final mimeType = header.split(';').first;
       final base64Data = photoDataUrl.substring(commaIndex + 1);
@@ -226,13 +228,18 @@ class PhotoChallengesApi {
             }),
           )
           .timeout(const Duration(seconds: 20));
-      if (response.statusCode != 200) return null;
+      if (response.statusCode != 200) {
+        return (null, 'http_${response.statusCode}');
+      }
 
       final body = jsonDecode(response.body);
-      if (body is! Map || body['ok'] != true) return null;
-      return '${body['url']}';
-    } catch (_) {
-      return null;
+      if (body is! Map || body['ok'] != true) {
+        final error = body is Map ? body['error'] : null;
+        return (null, error != null ? '$error' : 'invalid_response');
+      }
+      return ('${body['url']}', null);
+    } catch (err) {
+      return (null, '$err');
     }
   }
 

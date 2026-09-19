@@ -182,6 +182,11 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
   /// já que os noivos não vão vê-la no álbum sozinhos.
   final Set<String> _uploadFailedChallenges = {};
 
+  /// Motivo do último erro de envio de cada desafio em [_uploadFailedChallenges]
+  /// (ver [PhotoChallengesApi.uploadPhoto]), para mostrar ao convidado em vez
+  /// de só o botão "Tentar de novo".
+  final Map<String, String> _uploadErrors = {};
+
   /// Textos dos desafios cujo reenvio (botão "Tentar de novo") está em
   /// andamento — evita disparar duas tentativas para o mesmo desafio.
   final Set<String> _retryingUploads = {};
@@ -733,12 +738,13 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
     required DateTime takenAt,
   }) async {
     String? remoteUrl;
+    String? uploadError;
     if (_api.isEnabled) {
       _showToast(
         'Enviando sua foto para o álbum…',
         id: _photoUploadToastId,
       );
-      remoteUrl = await _api.uploadPhoto(
+      (remoteUrl, uploadError) = await _api.uploadPhoto(
         guestName: guestName,
         guestId: _guestId,
         challenge: challenge,
@@ -747,7 +753,10 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
       );
       if (!_disposed) {
         _showToast(
-          remoteUrl != null ? 'Foto enviada!' : 'Não deu para enviar a foto.',
+          remoteUrl != null
+              ? 'Foto enviada!'
+              : 'Não deu para enviar a foto.'
+                    '${uploadError != null ? ' ($uploadError)' : ''}',
           isError: remoteUrl == null,
           autoDismiss: Duration(seconds: remoteUrl != null ? 3 : 5),
           id: _photoUploadToastId,
@@ -773,10 +782,16 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
         );
       }
       if (_api.isEnabled && !_disposed) {
-        setState(() => _uploadFailedChallenges.add(challenge.text));
+        setState(() {
+          _uploadFailedChallenges.add(challenge.text);
+          if (uploadError != null) _uploadErrors[challenge.text] = uploadError;
+        });
       }
     } else if (!_disposed) {
-      setState(() => _uploadFailedChallenges.remove(challenge.text));
+      setState(() {
+        _uploadFailedChallenges.remove(challenge.text);
+        _uploadErrors.remove(challenge.text);
+      });
     }
 
     await _refreshGallery();
@@ -1130,6 +1145,7 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
 
   Component _buildUploadError(String guestName, String challengeText) {
     final retrying = _retryingUploads.contains(challengeText);
+    final error = _uploadErrors[challengeText];
     return div(classes: 'photo-challenges-upload-error', [
       p(classes: 'photo-challenges-upload-error-text', [
         .text(
@@ -1138,6 +1154,10 @@ class PhotoChallengesFlowState extends State<PhotoChallengesFlow> {
           'noivos para não perder o registro, ou tente enviar de novo.',
         ),
       ]),
+      if (error != null)
+        p(classes: 'photo-challenges-upload-error-detail', [
+          .text('Detalhe do erro: $error'),
+        ]),
       button(
         classes: 'photo-challenges-action secondary',
         attributes: {
